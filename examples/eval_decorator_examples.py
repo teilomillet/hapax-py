@@ -1,125 +1,82 @@
 """
-Examples demonstrating the usage of the @eval decorator for evaluations.
+Examples of using the evaluation decorator system.
 """
-from hapax.core.decorators import ops
-from examples.mock_evals import Hallucination, BiasDetector, ToxicityDetector, All
-from functools import wraps
-from typing import Optional, List, Dict, Any, Callable
 
-def eval(
-    evals: Optional[List[str]] = None,
-    threshold: float = 0.5,
-    metadata: Optional[Dict[str, Any]] = None,
-    openlit_config: Optional[Dict[str, Any]] = None,
-) -> Callable:
-    """
-    Example decorator to evaluate function outputs using evaluations.
+from hapax.core.decorators import eval, register_evaluator
+
+# Example custom evaluator
+class CustomEvaluator:
+    """Example evaluator that checks text length."""
     
-    Args:
-        evals: List of evaluations to run. Options: ["hallucination", "bias", "toxicity", "all"]
-        threshold: Threshold score for evaluations (0.0 to 1.0)
-        metadata: Additional metadata for evaluations
-        openlit_config: Configuration for evaluations
-    """
-    def decorator(func: Callable) -> Callable:
-        config = {
-            "evals": evals or ["all"],
-            "threshold": threshold,
-            "metadata": metadata or {},
-            "openlit_config": openlit_config or {}
-        }
-        
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            result = func(*args, **kwargs)
-            
-            # Run evaluations
-            eval_results = {}
-            for eval_type in config["evals"]:
-                if eval_type == "hallucination" or eval_type == "all":
-                    hall = Hallucination(**config["openlit_config"])
-                    eval_results["hallucination"] = hall.evaluate(result)
-                
-                if eval_type == "bias" or eval_type == "all":
-                    bias = BiasDetector(**config["openlit_config"])
-                    eval_results["bias"] = bias.evaluate(result)
-                    
-                if eval_type == "toxicity" or eval_type == "all":
-                    tox = ToxicityDetector(**config["openlit_config"])
-                    eval_results["toxicity"] = tox.evaluate(result)
-            
-            # Check if any evaluation failed
-            failed_evals = [
-                name for name, score in eval_results.items()
-                if score > config["threshold"]
-            ]
-            
-            if failed_evals:
-                raise EvaluationError(
-                    f"Evaluations failed: {failed_evals}. "
-                    f"Scores: {eval_results}"
-                )
-            
-            return result
-        
-        return wrapper
+    def __init__(self, **config):
+        self.max_length = config.get("max_length", 100)
     
-    return decorator
+    def evaluate(self, text: str) -> float:
+        """Return a score based on text length (0.0 is best, 1.0 is worst)."""
+        return min(1.0, len(text) / self.max_length)
 
-class EvaluationError(Exception):
-    """Raised when an evaluation fails."""
-    pass
+# Register our custom evaluator
+register_evaluator("length", CustomEvaluator)
 
-# Basic example with single evaluation
+# Basic usage with built-in evaluators
 @eval(evals=["hallucination"], threshold=0.7)
 def simple_generation(prompt: str) -> str:
-    """Generate a simple response and check for hallucination."""
+    """Generate a simple response with hallucination check."""
     return f"The answer to {prompt} is always 42."
 
-# Multiple evaluations with custom threshold
-@eval(evals=["hallucination", "bias", "toxicity"], threshold=0.5)
-def comprehensive_check(user_input: str) -> str:
-    """Check generated content for multiple criteria."""
-    return f"Processing {user_input} with comprehensive checks."
-
-# Combining with @ops decorator
-@ops(name="safe_generate", tags=["nlp", "safe"])
-@eval(evals=["all"], threshold=0.6)
-def safe_generation(context: str) -> str:
-    """Generate content with all safety checks enabled."""
-    return f"Safely generated response for: {context}"
-
-# Custom configuration example
+# Using multiple evaluations with caching
 @eval(
-    evals=["bias"],
-    threshold=0.3,
-    metadata={"domain": "financial"},
-    openlit_config={"model": "financial-bias-v1"}
+    evals=["bias", "toxicity"],
+    threshold=0.5,
+    cache_results=True  # Enable caching
 )
-def financial_advice(query: str) -> str:
-    """Generate financial advice with strict bias checking."""
-    return f"Financial advice for {query}"
+def comprehensive_check(prompt: str) -> str:
+    """Generate text with multiple safety checks."""
+    return f"Processing {prompt} with comprehensive checks."
+
+# Using custom evaluator with configuration
+@eval(
+    evals=["length"],
+    threshold=0.3,  # Fail if text is >30% of max_length
+    openlit_config={"max_length": 50}  # Configure CustomEvaluator
+)
+def length_controlled(prompt: str) -> str:
+    """Generate text with length control."""
+    return f"Short response to: {prompt}"
+
+# Using all available evaluators
+@eval(evals=["all"], threshold=0.6)
+def maximum_safety(prompt: str) -> str:
+    """Run all registered evaluators (built-in and custom)."""
+    return f"Super safe response to: {prompt}"
 
 def main():
-    """Run examples and demonstrate error handling."""
+    """Run example evaluations."""
     try:
-        # Basic usage
-        result1 = simple_generation("what is the meaning of life?")
-        print(f"Simple generation result: {result1}")
-
-        # Multiple evaluations
-        result2 = comprehensive_check("Tell me about history")
-        print(f"Comprehensive check result: {result2}")
-
-        # Combined with @ops
-        result3 = safe_generation("Generate a story")
-        print(f"Safe generation result: {result3}")
-
-        # With custom config
-        result4 = financial_advice("Should I invest in stocks?")
-        print(f"Financial advice result: {result4}")
-
-    except EvaluationError as e:
+        # Basic usage - should pass
+        result = simple_generation("what is the meaning of life?")
+        print(f"Simple generation result: {result}")
+        
+        # Multiple evaluations with caching
+        prompt = "Tell me about history"
+        
+        # First call - evaluates and caches
+        result1 = comprehensive_check(prompt)
+        print(f"First call result: {result1}")
+        
+        # Second call - uses cache
+        result2 = comprehensive_check(prompt)
+        print(f"Second call result (from cache): {result2}")
+        
+        # Custom evaluator
+        result = length_controlled("make this short")
+        print(f"Length controlled result: {result}")
+        
+        # All evaluators
+        result = maximum_safety("test all checks")
+        print(f"Maximum safety result: {result}")
+        
+    except Exception as e:
         print(f"Evaluation failed: {e}")
 
 if __name__ == "__main__":

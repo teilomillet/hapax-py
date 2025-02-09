@@ -2,6 +2,23 @@
 
 The evaluation decorator system provides a pytest-like interface for running evaluations on function outputs. This allows you to easily integrate content safety checks into your existing code.
 
+## Setup
+
+First, register the evaluators you want to use:
+
+```python
+from hapax.core.decorators import register_evaluator
+from your_evaluators import CustomEvaluator
+
+# Register built-in evaluators (done automatically)
+# - "hallucination"
+# - "bias"
+# - "toxicity"
+
+# Register custom evaluators
+register_evaluator("custom", CustomEvaluator)
+```
+
 ## Basic Usage
 
 ```python
@@ -14,21 +31,40 @@ def generate_response(prompt: str) -> str:
 
 ## Features
 
-### Multiple Evaluation Types
+### Registry System
 
-The `@eval` decorator supports several types of evaluations:
+The decorator uses a registry system to manage available evaluators. Built-in evaluators are registered automatically:
 - `hallucination`: Check for factual accuracy
 - `bias`: Detect potential biases
 - `toxicity`: Identify harmful content
-- `all`: Run all available evaluations
+- `all`: Run all registered evaluators
 
-### Configurable Thresholds
-
-Set acceptable thresholds for evaluations (0.0 to 1.0). Lower thresholds are more strict:
+You can add your own evaluators:
 ```python
-@eval(evals=["bias"], threshold=0.3)  # Strict bias checking
-def financial_advice(query: str) -> str:
-    return f"Financial advice for {query}"
+class MyEvaluator:
+    def __init__(self, **config):
+        self.config = config
+    
+    def evaluate(self, text: str) -> float:
+        # Return score between 0 and 1
+        return 0.5
+
+register_evaluator("my_eval", MyEvaluator)
+```
+
+### Result Caching
+
+Results are automatically cached based on function inputs:
+```python
+@eval(evals=["bias"], threshold=0.3, cache_results=True)  # cache_results is True by default
+def generate_content(prompt: str) -> str:
+    return f"Content for {prompt}"
+
+# First call: evaluates and caches result
+result1 = generate_content("test")
+
+# Second call: uses cached result
+result2 = generate_content("test")  # faster!
 ```
 
 ### Custom Configuration
@@ -39,7 +75,8 @@ Provide additional metadata and evaluation-specific configuration:
     evals=["toxicity"],
     threshold=0.5,
     metadata={"domain": "social"},
-    openlit_config={"model": "toxicity-v2"}
+    openlit_config={"model": "toxicity-v2"},
+    cache_results=False  # disable caching if needed
 )
 def generate_social_post(topic: str) -> str:
     return f"Post about {topic}"
@@ -93,21 +130,23 @@ EvaluationError: Evaluations failed: ['bias']. Scores: {'bias': 0.5}
 
 ## Best Practices
 
-1. **Choose Appropriate Thresholds**
+1. **Register Custom Evaluators Early**
+   - Register evaluators at module import time
+   - Use descriptive names for evaluators
+
+2. **Choose Appropriate Thresholds**
    - Lower thresholds (0.3-0.5) for strict checking
    - Higher thresholds (0.7-0.9) for more permissive checking
 
-2. **Evaluation Selection**
-   - Use specific evaluations when possible
-   - Use `all` for maximum safety
+3. **Caching Considerations**
+   - Enable caching for expensive evaluations
+   - Disable caching for evaluations that should always run
+   - Cache is per-process, not persistent
 
-3. **Error Handling**
-   - Always handle potential evaluation errors
-   - Log evaluation failures for monitoring
-
-4. **Configuration**
-   - Use domain-specific configurations when available
-   - Add relevant metadata for tracking
+4. **Type Safety**
+   - Evaluators only work with string outputs
+   - Functions must have type hints
+   - Return type must be `str`
 
 ## Complete Example
 
