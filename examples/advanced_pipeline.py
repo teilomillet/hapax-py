@@ -138,6 +138,9 @@ pipeline = (
     .then(Merge("combine_results", combine_results))
 )
 
+# Visualize the pipeline
+pipeline.visualize()
+
 # Example usage
 if __name__ == "__main__":
     texts = [

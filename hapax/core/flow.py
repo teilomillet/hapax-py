@@ -36,10 +36,16 @@ class Branch(FlowOperator[T, List[U]]):
     def __init__(self, name: str):
         super().__init__(name)
         self.branches: List[BaseOperation] = []
+        self.input_type = None
+        self.output_type = None
     
     def add(self, *operations: BaseOperation) -> 'Branch[T, List[U]]':
         """Add parallel branches to execute."""
         self.branches.extend(operations)
+        # Try to get type information from first operation
+        if operations and hasattr(operations[0], '__annotations__'):
+            self.input_type = operations[0].__annotations__.get('input_type', None)
+            self.output_type = operations[0].__annotations__.get('return_type', None)
         return self
     
     def __call__(self, input_data: T) -> List[U]:
@@ -69,6 +75,12 @@ class Merge(FlowOperator[List[T], U]):
     def __init__(self, name: str, merge_func: Callable[[List[Any]], U]):
         super().__init__(name)
         self.merge_func = merge_func
+        self.input_type = None
+        self.output_type = None
+        # Try to get type information from merge function
+        if hasattr(merge_func, '__annotations__'):
+            self.input_type = merge_func.__annotations__.get('args', [None])[0]
+            self.output_type = merge_func.__annotations__.get('return', None)
     
     def __call__(self, inputs: List[T]) -> U:
         """Merge multiple inputs using the merge function."""

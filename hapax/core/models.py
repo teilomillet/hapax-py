@@ -506,166 +506,104 @@ class Graph(BaseModel):
                     error=e
                 )
 
-    def visualize(self) -> None:
+    def visualize(self, layout: str = 'sugiyama', interactive: bool = True) -> None:
         """
-        Generate a visualization of the graph using networkx and matplotlib.
-        This will show the flow of operations and their types.
+        Generate an enhanced visualization of the graph using networkx and matplotlib.
+        
+        Args:
+            layout: Layout algorithm to use ('sugiyama', 'spring', 'shell')
+            interactive: Whether to enable interactive features
         """
         G = nx.DiGraph()
         
-        # Add nodes
-        # First, calculate node levels using topological sort
-        try:
-            levels = {node: i for i, node_list in enumerate(nx.topological_generations(G)) for node in node_list}
-        except nx.NetworkXUnfeasible:
-            levels = {node: 0 for node in G.nodes()}  # Fallback if graph has cycles
-        
+        # Add nodes with enhanced metadata
         for op in self.operations:
-            node_label = f"{op.config.name}"  # Keep the main label simple
+            node_label = f"{op.config.name}"
+            details = {
+                'input_type': op.input_type.__name__,
+                'output_type': op.output_type.__name__,
+                'description': op.config.description or '',
+                'tags': op.config.tags or [],
+                'type': op.__class__.__name__
+            }
+            G.add_node(node_label, **details)
             
-            # Store detailed info in node attributes for the hover text
-            details = [
-                f"Input: {op.input_type.__name__}",
-                f"Output: {op.output_type.__name__}"
-            ]
-            if op.config.description:
-                details.append(op.config.description)
-            if op.config.tags:
-                details.append(f"Tags: {', '.join(op.config.tags)}")
-            
-            # Color based on tags
-            if 'preprocessing' in op.config.tags:
-                color = '#C8E6C9'  # Light green
-            elif 'analysis' in op.config.tags:
-                color = '#BBDEFB'  # Light blue
-            else:
-                color = '#F5F5F5'  # Light gray
-            
-            G.add_node(
-                op.config.name,
-                label=node_label,
-                details='\n'.join(details),
-                color=color,
-                level=levels.get(op.config.name, 0)  # Use topological level
-            )
-        
         # Add edges
-        for source, target in self.edges:
-            G.add_edge(source, target)
-        
-        # Create the visualization with larger figure size
-        plt.figure(figsize=(15, 10))
-        
-        # Calculate node positions using hierarchical layout
-        def hierarchical_layout(G):
-            # Group nodes by level
-            nodes_by_level = {}
-            for node in G.nodes():
-                level = G.nodes[node]['level']
-                if level not in nodes_by_level:
-                    nodes_by_level[level] = []
-                nodes_by_level[level].append(node)
+        for src, dst in self.edges:
+            G.add_edge(src, dst)
             
-            # Calculate positions
-            pos = {}
-            levels = sorted(nodes_by_level.keys())
+        # Choose layout algorithm
+        if layout == 'sugiyama':
+            pos = nx.multipartite_layout(G, subset_key='layer')
+        elif layout == 'spring':
+            pos = nx.spring_layout(G, k=1, iterations=50)
+        else:  # shell layout
+            pos = nx.shell_layout(G)
             
-            for level in levels:
-                nodes = nodes_by_level[level]
-                for i, node in enumerate(nodes):
-                    # X coordinate based on level (left to right)
-                    x = level
-                    # Y coordinate spaced evenly within level
-                    if len(nodes) > 1:
-                        y = (i - (len(nodes) - 1) / 2) / len(nodes)
-                    else:
-                        y = 0
-                    pos[node] = (x, y)
-            
-            return pos
+        # Setup plot
+        plt.figure(figsize=(12, 8))
         
-        pos = hierarchical_layout(G)
+        # Draw nodes with colors based on operation type
+        node_colors = [self._get_node_color(G.nodes[node]['type']) for node in G.nodes()]
+        nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=2000, alpha=0.7)
         
-        # Scale and center the layout
-        pos = {node: (x, y * 2) for node, (x, y) in pos.items()}  # Increase vertical spacing
+        # Draw edges with arrows
+        nx.draw_networkx_edges(G, pos, edge_color='gray', arrows=True, arrowsize=20)
         
-        # Draw nodes with larger size and custom style
-        node_colors = [G.nodes[node]['color'] for node in G.nodes()]
-        nx.draw_networkx_nodes(
-            G, pos,
-            node_color=node_colors,
-            node_size=3000,
-            alpha=0.9,
-            edgecolors='gray',
-            linewidths=2
-        )
+        # Add labels with input/output types
+        labels = {
+            node: f"{node}\n{G.nodes[node]['input_type']}->{G.nodes[node]['output_type']}"
+            for node in G.nodes()
+        }
+        nx.draw_networkx_labels(G, pos, labels, font_size=8)
         
-        # Add hover annotations
-        def hover(event):
-            if event.inaxes != plt.gca():
-                return
-            for node, (x, y) in pos.items():
-                if abs(event.xdata - x) < 0.1 and abs(event.ydata - y) < 0.1:
-                    details = G.nodes[node]['details']
-                    plt.annotate(
-                        details,
-                        xy=(x, y), xytext=(20, 20),
-                        textcoords='offset points',
-                        bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
-                        arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
-                    )
-                    plt.draw()
+        if interactive:
+            # Add hover annotations
+            def hover(event):
+                if event.inaxes != plt.gca():
                     return
-        
-        # Draw edges with curved arrows
-        nx.draw_networkx_edges(
-            G, pos,
-            edge_color='gray',
-            arrows=True,
-            arrowsize=30,
-            connectionstyle='arc3,rad=0.2',  # Curved edges
-            width=2
-        )
-        
-        # Add labels with larger font
-        labels = {node: G.nodes[node]['label'] for node in G.nodes()}
-        nx.draw_networkx_labels(
-            G, pos,
-            labels,
-            font_size=12,
-            font_weight='bold',
-            font_family='sans-serif'
-        )
-        
-        plt.title(f"Graph: {self.name}", pad=20, fontsize=16, fontweight='bold')
+                for node, (x, y) in pos.items():
+                    if abs(event.xdata - x) < 0.1 and abs(event.ydata - y) < 0.1:
+                        details = G.nodes[node]
+                        text = (
+                            f"Operation: {node}\n"
+                            f"Type: {details['type']}\n"
+                            f"Input: {details['input_type']}\n"
+                            f"Output: {details['output_type']}\n"
+                            f"Tags: {', '.join(details['tags'])}\n"
+                            f"{details['description']}"
+                        )
+                        # Remove old annotations
+                        for child in plt.gca().get_children():
+                            if isinstance(child, plt.Annotation):
+                                child.remove()
+                        # Add new annotation
+                        plt.annotate(
+                            text,
+                            xy=(x, y), xytext=(20, 20),
+                            textcoords='offset points',
+                            bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5),
+                            arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0')
+                        )
+                        plt.draw()
+                        return
+            
+            plt.connect('motion_notify_event', hover)
+            
+        plt.title(f"Graph: {self.name}")
         plt.axis('off')
-        
-        # Add a legend for node types
-        legend_elements = [
-            plt.Rectangle((0, 0), 1, 1, fc='#C8E6C9', ec='gray', label='Preprocessing'),
-            plt.Rectangle((0, 0), 1, 1, fc='#BBDEFB', ec='gray', label='Analysis'),
-            plt.Rectangle((0, 0), 1, 1, fc='#F5F5F5', ec='gray', label='Other')
-        ]
-        plt.legend(
-            handles=legend_elements,
-            loc='upper left',
-            bbox_to_anchor=(1, 1),
-            fontsize=10
-        )
-        
-        # Add hover functionality
-        plt.gcf().canvas.mpl_connect('motion_notify_event', hover)
-        
-        # Add grid lines to show levels
-        ax = plt.gca()
-        levels = sorted(set(G.nodes[node]['level'] for node in G.nodes()))
-        for level in levels:
-            ax.axvline(x=level, color='lightgray', linestyle='--', alpha=0.5)
-        
-        # Adjust layout to prevent clipping
         plt.tight_layout()
-        plt.show()
-        plt.close()
+        
+    def _get_node_color(self, op_type: str) -> str:
+        """Get color based on operation type."""
+        color_map = {
+            'Operation': '#2ecc71',  # Green for basic operations
+            'Branch': '#e74c3c',     # Red for flow control
+            'Merge': '#3498db',      # Blue for aggregation
+            'Loop': '#f1c40f',       # Yellow for loops
+            'Condition': '#9b59b6'   # Purple for conditionals
+        }
+        return color_map.get(op_type, '#95a5a6')  # Gray for unknown types
 
 class GraphExecutionError(Exception):
     """Detailed error information for graph execution failures."""
