@@ -1,0 +1,3 @@
+[submodule "submodules/openlit"]
+	path = submodules/openlit
+	url = https://github.com/openlit/openlit
