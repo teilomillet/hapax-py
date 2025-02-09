@@ -119,26 +119,42 @@ def summarize(text: str) -> str:
     )
     return response.choices[0].message.content.strip()
 
-def combine_results(results: List[Any]) -> Dict[str, Any]:
-    """Combine results from different branches."""
+def combine_results(results: List[Union[str, Sentiment, List[Entity]]]) -> Dict[str, Any]:
+    """Combine results from different branches.
+    
+    Args:
+        results: List containing [summary, sentiment, entities]
+    Returns:
+        Combined dictionary with all results
+    """
+    summary, sentiment, entities = results  # Unpack in order
     return {
-        "summary": results[0],
-        "sentiment": results[1],
-        "entities": results[2]
+        "summary": summary,
+        "sentiment": sentiment,
+        "entities": entities
     }
 
 # Build the analysis pipeline using Graph API
-pipeline = (
-    Graph("text_analysis")
-    .branch(
-        summarize,  # Branch 1: Generate summary
-        analyze_sentiment,  # Branch 2: Analyze sentiment
-        extract_entities  # Branch 3: Extract entities
-    )
-    .then(Merge("combine_results", combine_results))
-)
+print("DEBUG: Creating pipeline...")
+pipeline = Graph("text_analysis", description="Analyze text using LLM")
+print(f"DEBUG: Pipeline type: {type(pipeline)}")
+print(f"DEBUG: Pipeline attributes: {dir(pipeline)}")
+print(f"DEBUG: Pipeline methods: {[m for m in dir(pipeline) if not m.startswith('_')]}")
 
-# Visualize the pipeline
+pipeline.branch(
+    summarize,           # Branch 1: str -> str
+    analyze_sentiment,   # Branch 2: str -> Sentiment
+    extract_entities     # Branch 3: str -> List[Entity]
+)
+print("DEBUG: After branch")
+print(f"DEBUG: Pipeline methods after branch: {[m for m in dir(pipeline) if not m.startswith('_')]}")
+
+pipeline.merge(combine_results)  # Merge results into final dictionary
+print("DEBUG: After merge")
+print(f"DEBUG: Pipeline methods after merge: {[m for m in dir(pipeline) if not m.startswith('_')]}")
+
+# Visualize the pipeline structure
+print("\nGenerating pipeline visualization...")
 pipeline.visualize()
 
 # Example usage
@@ -159,7 +175,7 @@ if __name__ == "__main__":
     for i, text in enumerate(texts, 1):
         print(f"\nText {i}:")
         print("-" * 10)
-        results = pipeline(text)
+        results = pipeline.execute(text)  # Use execute() instead of __call__
         
         print(f"Summary: {results['summary']}")
         print(f"Sentiment: pos={results['sentiment']['positive']:.2f}, "

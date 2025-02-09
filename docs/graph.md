@@ -1,12 +1,12 @@
 # Hapax Graph API
 
-The Hapax Graph API provides a flexible and intuitive way to build complex data processing pipelines. Inspired by frameworks like JAX and Flyte, it offers a fluent interface for composing operations and defining workflows, with built-in automatic validation at every step.
+The Hapax Graph API provides a flexible and intuitive way to build complex data processing pipelines. Inspired by frameworks like JAX and Flyte, it offers a fluent interface for composing operations and defining workflows, with built-in type checking at import time.
 
 ## Core Concepts
 
 ### Type-Safe Operations
 
-Operations are the basic building blocks of a Hapax graph. Each operation is a pure function that takes an input and produces an output. Operations are automatically type-checked when created using the `@ops` decorator:
+Operations are the basic building blocks of a Hapax graph. Each operation is a pure function that takes an input and produces an output. Operations are type-checked at both import time and runtime:
 
 ```python
 @ops(name="summarize", tags=["llm"])
@@ -15,38 +15,72 @@ def summarize(text: str) -> str:
     # Implementation
 ```
 
-### Validated Graph Construction
+The `@ops` decorator performs initial type validation at import time, ensuring the function has proper type hints. Further type checking occurs at runtime when the operation is executed.
 
-A Graph is a collection of operations connected in a specific way. The Graph class provides a fluent API for building these connections, with automatic validation at every step:
+### Type Validation Stages
 
-```python
-# Type compatibility is checked automatically during construction
-graph = (
-    Graph("name", "description")
-    .then(op1)  # Validates type compatibility with op1
-    .then(op2)  # Validates type compatibility between op1 and op2
-)
-```
+Hapax performs comprehensive type checking at multiple stages:
 
-## Automatic Validation
+1. Import Time (Static):
+   - Validates presence of type hints through the `@ops` decorator
+   - Checks input parameter types exist
+   - Verifies return type annotations exist
+   - Stores validated type information for later use
 
-Hapax performs comprehensive validation at every stage:
-
-1. During Graph Construction:
+2. Graph Definition Time:
    - Type compatibility between connected operations
    - Structural validation (cycles, missing connections)
    - Configuration and metadata validation
+   - Immediate type checking when using operation composition (`>>`)
 
-2. During Operation Composition:
-   - Input/output type compatibility when using `>>`
-   - Automatic type checking of operation results
-
-3. Before Execution:
-   - Complete graph validation
+3. Runtime (Dynamic):
+   - Input type validation before operation execution
+   - Output type validation after operation execution
+   - Complete graph validation during execution
+   - Type checking of operation results
    - Resource availability checks
    - Configuration validation
 
-All validation happens automatically - you don't need to call any validation functions manually.
+This multi-stage type checking ensures type safety throughout the entire lifecycle of your data processing pipeline:
+- Early detection of type-related issues during development (import time)
+- Immediate feedback when building graphs (definition time)
+- Runtime safety guarantees during execution
+
+For example, the following code would fail at different stages:
+
+```python
+# Fails at import time - missing type hints
+@ops(name="bad_op")
+def no_type_hints(x):
+    return x + 1
+
+# Fails at graph definition time - type mismatch
+graph = (
+    Graph("type_mismatch")
+    .then(str_op)      # str -> str
+    .then(int_op)      # int -> int  # Type error!
+)
+
+# Fails at runtime - actual input type doesn't match declaration
+@ops(name="runtime_check")
+def expect_string(text: str) -> str:
+    return text.upper()
+
+result = expect_string(123)  # Runtime type error
+```
+
+### Compile-Time Type Validation
+
+A Graph is a collection of operations connected in a specific way. The Graph class provides a fluent API for building these connections, with comprehensive type checking at definition time:
+
+```python
+# Type compatibility is checked when the graph is defined
+graph = (
+    Graph("name", "description")
+    .then(op1)  # Type compatibility checked immediately
+    .then(op2)  # Type compatibility checked immediately
+)
+```
 
 ## Building Blocks
 

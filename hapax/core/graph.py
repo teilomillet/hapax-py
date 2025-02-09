@@ -160,12 +160,43 @@ class Graph(Generic[T, U]):
         )
         return self.then(loop)
     
-    def __call__(self, input_data: T) -> U:
-        """Execute the graph on input data."""
+    def execute(self, input_data: T) -> U:
+        """Execute the graph with the given input data."""
         if not self._operations:
             raise ValueError("Graph has no operations")
         
-        return self._operations[0](input_data)
+        result = input_data
+        
+        # Handle branching and merging
+        if self._current_branch:
+            branch_results = [op(input_data) for op in self._current_branch.branches]
+            if self._current_merge:
+                result = self._current_merge(branch_results)
+            else:
+                result = branch_results
+        
+        # Handle conditional
+        elif self._current_condition:
+            condition, if_true, if_false = self._current_condition
+            if condition(input_data):
+                result = if_true(input_data)
+            else:
+                result = if_false(input_data)
+        
+        # Handle loop
+        elif self._current_loop:
+            operation, condition, max_iterations = self._current_loop
+            iterations = 0
+            while condition(result) and iterations < max_iterations:
+                result = operation(result)
+                iterations += 1
+        
+        # Handle sequential operations
+        else:
+            for op in self._operations:
+                result = op(result)
+        
+        return result
     
     def __rshift__(self, other: Union[BaseOperation[U, V], 'Graph[U, V]']) -> 'Graph[T, V]':
         """Support the >> operator for composing graphs."""

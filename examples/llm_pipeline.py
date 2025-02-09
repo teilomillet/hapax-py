@@ -92,12 +92,12 @@ def create_summary_pipeline() -> Graph[str, str]:
 def summarize_text(text: str) -> str:
     """Process and summarize text using an LLM."""
     pipeline = create_summary_pipeline()
-    summary = pipeline(text)
+    summary = pipeline.execute(text)
     print(f"\nFinal summary: {summary}")
     return summary
 
+# Example usage
 if __name__ == "__main__":
-    # Example usage
     text = """
     The Python programming language was created by Guido van Rossum and released in 1991. 
     It emphasizes code readability with its notable use of significant whitespace. 
@@ -105,3 +105,7 @@ if __name__ == "__main__":
     """
     
     summary = summarize_text(text)
+    print("\nOriginal text:")
+    print(text)
+    print("\nSummary:")
+    print(summary)

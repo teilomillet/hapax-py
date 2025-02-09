@@ -176,6 +176,7 @@ def ops(
 ) -> Callable:
     """
     Decorator to create an Operation from a function.
+    Performs type checking at import time.
     
     Example:
         @ops(name="tokenize", tags=["nlp"])
@@ -183,8 +184,21 @@ def ops(
             return text.split()
     """
     def decorator(func: Callable[[T], U]) -> Operation[T, U]:
-        op_name = name or func.__name__
+        # Validate type hints at import time
+        hints = get_type_hints(func)
+        if not hints:
+            raise TypeError(f"Function {func.__name__} must have type hints")
         
+        # Check input parameter types
+        params = list(hints.items())
+        if len(params) < 2:  # Need at least one parameter and return type
+            raise TypeError(f"Function {func.__name__} must have at least one parameter with type annotation")
+            
+        # Validate return type exists
+        if "return" not in hints:
+            raise TypeError(f"Function {func.__name__} must specify return type annotation")
+            
+        op_name = name or func.__name__
         config = OpConfig(
             name=op_name,
             description=description or func.__doc__,
@@ -193,10 +207,16 @@ def ops(
             openlit_config=openlit_config,
         )
         
-        return Operation(
+        operation = Operation(
             func=func,
             config=config,
         )
+        
+        # Store validated type information
+        operation._input_type = params[0][1]  # First parameter type
+        operation._output_type = hints["return"]
+        
+        return operation
     
     return decorator
 

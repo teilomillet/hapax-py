@@ -153,21 +153,59 @@ class Operation(BaseOperation[T, U]):
         self.config = config
         self._auto_map = auto_map
         
-        # Extract types from function signature
-        sig = signature(func)
-        # Get the first parameter's annotation (input type)
-        param_types = list(sig.parameters.values())
-        if not param_types:
-            self._input_type = Any
-        else:
-            self._input_type = param_types[0].annotation
-            if self._input_type == inspect.Parameter.empty:
-                self._input_type = Any
+        # Extract and validate types at definition time
+        hints = get_type_hints(func)
+        if not hints:
+            raise TypeError(f"Function {func.__name__} must have type hints")
         
-        # Get return annotation (output type)
-        self._output_type = sig.return_annotation
+        # Get and validate input type
+        params = list(signature(func).parameters.values())
+        if not params:
+            raise TypeError(f"Function {func.__name__} must have at least one parameter")
+        
+        first_param = params[0]
+        if first_param.annotation == inspect.Parameter.empty:
+            raise TypeError(f"First parameter of {func.__name__} must have a type annotation")
+        self._input_type = first_param.annotation
+        
+        # Get and validate return type
+        if 'return' not in hints:
+            raise TypeError(f"Function {func.__name__} must have a return type annotation")
+        self._output_type = hints['return']
         if self._output_type == inspect.Parameter.empty:
-            self._output_type = Any
+            raise TypeError(f"Function {func.__name__} must have a return type annotation")
+            
+        # Validate type compatibility for composition
+        if hasattr(func, '_input_type') and hasattr(func, '_output_type'):
+            if not self._is_type_compatible(self._output_type, func._input_type):
+                raise TypeError(
+                    f"Type mismatch in {func.__name__}: "
+                    f"output type {self._output_type} is not compatible with input type {func._input_type}"
+                )
+    
+    def _is_type_compatible(self, source_type: Any, target_type: Any) -> bool:
+        """Check if source_type is compatible with target_type."""
+        if target_type is Any or source_type is Any:
+            return True
+            
+        # Handle Union types
+        if get_origin(target_type) is Union:
+            return any(self._is_type_compatible(source_type, t) for t in get_args(target_type))
+            
+        # Handle List types
+        if get_origin(source_type) is list and get_origin(target_type) is list:
+            source_elem_type = get_args(source_type)[0]
+            target_elem_type = get_args(target_type)[0]
+            return self._is_type_compatible(source_elem_type, target_elem_type)
+            
+        # Handle Dict types
+        if get_origin(source_type) is dict and get_origin(target_type) is dict:
+            source_key_type, source_val_type = get_args(source_type)
+            target_key_type, target_val_type = get_args(target_type)
+            return (self._is_type_compatible(source_key_type, target_key_type) and
+                   self._is_type_compatible(source_val_type, target_val_type))
+                   
+        return source_type == target_type
 
     def __call__(self, input_data: T) -> U:
         """Execute the operation on input data."""
@@ -353,43 +391,152 @@ def graph(
         return wrapper
     return decorator
 
-class Graph(BaseModel):
+class GraphData(BaseModel):
+    """Data model for graph configuration."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    name: str
+    description: Optional[str] = None
+    operations: List[Union[Operation, BaseOperation]] = Field(default_factory=list)
+    edges: List[tuple[str, str]] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class Graph:
     """
     Represents a computation graph as a composition of operations.
     The graph itself is an operation that can be composed with other operations.
     Supports complex flow control including branching, merging, and conditionals.
+    All type checking is performed at graph definition time.
     """
-    model_config = ConfigDict(arbitrary_types_allowed=True)
     
-    name: str
-    operations: List[Union[Operation, BaseOperation]]
-    edges: List[tuple[str, str]]
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    
-    def __init__(self, **data):
-        super().__init__(**data)
+    def __init__(self, name: str, description: Optional[str] = None, **data):
+        """Initialize a new graph.
+        
+        Args:
+            name: Name of the graph
+            description: Optional description
+            **data: Additional data for the graph
+        """
+        print(f"DEBUG: Graph.__init__ called with name={name}")
+        self.data = GraphData(
+            name=name,
+            description=description,
+            operations=[],
+            edges=[],
+            metadata=data.get('metadata', {}),
+            **data
+        )
         self._graph = nx.DiGraph()
         self._tracer = trace.get_tracer(__name__)
+        self._merge_funcs: Dict[str, Callable] = {}
+        print(f"DEBUG: Graph.__init__ completed. Methods: {[m for m in dir(self) if not m.startswith('_')]}")
+    
+    def __getattr__(self, name: str) -> Any:
+        print(f"DEBUG: __getattr__ called for {name}")
+        if name == 'execute':
+            print("DEBUG: execute method not found in normal lookup")
+            print(f"DEBUG: Available methods: {[m for m in dir(self) if not m.startswith('_')]}")
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    
+    @property
+    def name(self) -> str:
+        return self.data.name
+    
+    @property
+    def operations(self) -> List[Union[Operation, BaseOperation]]:
+        return self.data.operations
+    
+    @property
+    def edges(self) -> List[tuple[str, str]]:
+        return self.data.edges
+    
+    def branch(self, *operations: Union[Operation, BaseOperation]) -> 'Graph':
+        """Create parallel branches in the graph."""
+        # Add operations to the graph
+        self.data.operations.extend(operations)
         
-        # Build graph from operations and edges
+        # Create a branch node
+        branch_name = f"{self.name}_branch_{len(self._merge_funcs)}"
+        
+        # Add edges from branch to each operation
+        for op in operations:
+            self.data.edges.append((branch_name, op.name))
+        
+        # Rebuild and validate the graph
+        self._build_and_validate_graph()
+        return self
+    
+    def merge(self, merge_func: Callable[[List[Any]], Any]) -> 'Graph':
+        """Merge multiple branch outputs using the provided function."""
+        # Create merge node
+        merge_name = f"{self.name}_merge_{len(self._merge_funcs)}"
+        self._merge_funcs[merge_name] = merge_func
+        
+        # Connect all leaf operations to merge
         for op in self.operations:
-            if isinstance(op, BaseOperation):
-                # Flow operators might add multiple nodes and edges
-                self._add_flow_operator(op)
-            else:
-                self._graph.add_node(op.config.name, operation=op)
+            if not any(src == op.name for src, _ in self.edges):  # If op has no outgoing edges
+                self.data.edges.append((op.name, merge_name))
         
+        # Rebuild and validate the graph
+        self._build_and_validate_graph()
+        return self
+    
+    def _build_and_validate_graph(self):
+        """Build and validate the graph at definition time."""
+        # Clear existing graph
+        self._graph.clear()
+        
+        # Add all operations as nodes
+        for op in self.operations:
+            self._graph.add_node(op.name, operation=op)
+        
+        # Add all edges
         for src, dst in self.edges:
             self._graph.add_edge(src, dst)
-    
-    def _add_flow_operator(self, operator: BaseOperation):
-        """Add a flow operator to the graph."""
-        if isinstance(operator, BaseOperation):
-            # Add branch node and connect to all branch operations
-            self._graph.add_node(operator.name, operator=operator)
         
+        # Validate the graph
+        self._validate_graph_structure()
+        self._validate_type_compatibility()
+    
+    def _validate_graph_structure(self):
+        """Validate graph structure at definition time."""
+        # Remove loop edges for cycle detection
+        non_loop_graph = self._graph.copy()
+        for node in self._graph.nodes:
+            if isinstance(self._graph.nodes[node].get("operator"), BaseOperation):
+                loop_op = self._graph.nodes[node]["operator"]
+                non_loop_graph.remove_edge(loop_op.name, node)
+        
+        # Check for cycles
+        cycles = list(nx.simple_cycles(non_loop_graph))
+        if cycles:
+            raise ValueError(f"Graph contains cycles: {cycles}")
+    
+    def _validate_type_compatibility(self):
+        """Validate type compatibility between operations at definition time."""
+        for src, dst in self.edges:
+            src_node = self._graph.nodes[src]
+            dst_node = self._graph.nodes[dst]
+            
+            if "operation" in src_node and "operation" in dst_node:
+                src_op = src_node["operation"]
+                dst_op = dst_node["operation"]
+                
+                if not hasattr(src_op, "_output_type") or not hasattr(dst_op, "_input_type"):
+                    raise TypeError(
+                        f"Operations must have type information. Check that {src} and {dst} "
+                        "are decorated with @ops"
+                    )
+                
+                if src_op._output_type != dst_op._input_type:
+                    raise TypeError(
+                        f"Type mismatch between {src} ({src_op._output_type}) "
+                        f"and {dst} ({dst_op._input_type})"
+                    )
+    
     def execute(self, input_data: Any) -> Any:
         """Execute the graph with instrumentation."""
+        print(f"DEBUG: execute called with input: {type(input_data)}")
         with self._tracer.start_as_current_span(
             name=f"graph.{self.name}",
             attributes={
@@ -399,20 +546,15 @@ class Graph(BaseModel):
             }
         ) as graph_span:
             try:
-                # Validate graph before execution
-                self.validate()
-                
                 # Track execution state
                 node_results = {}
                 execution_errors = []
                 
-                # Execute nodes in topological order where possible
+                # Execute nodes in topological order
                 for node_name in nx.topological_sort(self._graph):
-                    node = self._graph.nodes[node_name]
-                    
                     with self._tracer.start_as_current_span(
                         name=f"node.{node_name}",
-                        attributes={"node.type": type(node.get("operator", node.get("operation"))).__name__}
+                        attributes={"node.type": "operation"}
                     ) as node_span:
                         try:
                             # Get input data from predecessors
@@ -420,17 +562,15 @@ class Graph(BaseModel):
                             if not predecessors:
                                 node_input = input_data
                             else:
-                                # Handle multiple inputs for merge operations
-                                if isinstance(node.get("operator"), BaseOperation):
-                                    node_input = [node_results[pred] for pred in predecessors]
+                                # Handle merge nodes
+                                if node_name in self._merge_funcs:
+                                    # Collect results from all predecessors in order
+                                    merge_inputs = [node_results[pred] for pred in predecessors]
+                                    result = self._merge_funcs[node_name](merge_inputs)
                                 else:
+                                    # Regular operation
                                     node_input = node_results[predecessors[0]]
-                            
-                            # Execute the node
-                            if "operator" in node:
-                                result = node["operator"](node_input)
-                            else:
-                                result = node["operation"](node_input)
+                                    result = self._graph.nodes[node_name]["operation"](node_input)
                             
                             node_results[node_name] = result
                             node_span.set_status(Status(StatusCode.OK))
@@ -439,15 +579,12 @@ class Graph(BaseModel):
                             node_span.set_status(Status(StatusCode.ERROR, str(e)))
                             node_span.record_exception(e)
                             execution_errors.append((node_name, e))
-                            
-                            # Propagate rich error information
-                            if isinstance(e, (Exception)):
-                                raise GraphExecutionError(
-                                    f"Error in node {node_name}: {str(e)}",
-                                    node_name=node_name,
-                                    node_errors=execution_errors,
-                                    partial_results=node_results
-                                ) from e
+                            raise GraphExecutionError(
+                                f"Error in node {node_name}: {str(e)}",
+                                node_name=node_name,
+                                node_errors=execution_errors,
+                                partial_results=node_results
+                            ) from e
                 
                 # Get result from terminal nodes (nodes with no successors)
                 terminal_nodes = [n for n in self._graph.nodes if not list(self._graph.successors(n))]

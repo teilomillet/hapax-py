@@ -1,18 +1,20 @@
 # Hapax: Type-Safe Graph Execution Framework
 
-Hapax is a powerful Python framework for building type-safe, observable data processing pipelines. Built on top of OpenLit, it provides automatic validation, rich error messages, and comprehensive monitoring out of the box.
+Hapax is a powerful Python framework for building type-safe, observable data processing pipelines. Built on top of OpenLit, it provides multi-stage type checking, rich error messages, and comprehensive monitoring out of the box.
 
 ## Features
 
-✨ **Type-Safe by Design**
-- Automatic type checking during graph construction
-- Immediate feedback on type mismatches
+✨ **Multi-Stage Type Safety**
+- Import-time type validation through `@ops` decorator
+- Definition-time type checking when building graphs
+- Runtime type validation during execution
 - Rich error messages that pinpoint issues
 
-🔍 **Built-in Validation**
-- Automatic validation at every step
-- Cycle detection in graph structure
-- Configuration and metadata verification
+🔍 **Static Analysis**
+- Graph structure validation
+- Cycle detection
+- Type compatibility verification
+- Configuration and metadata checks
 
 📊 **OpenLit Integration**
 - Automatic monitoring and observability
@@ -22,7 +24,7 @@ Hapax is a powerful Python framework for building type-safe, observable data pro
 
 🎮 **Intuitive API**
 - Fluent interface for building pipelines
-- Composable operations using `>>`
+- Type-safe operation composition using `>>`
 - Rich control flow (branch, merge, condition, loop)
 
 ## Quick Start
@@ -36,38 +38,42 @@ pip install hapax
 ```python
 from hapax import ops, graph
 import openlit
+from typing import List, Dict
 
 # Initialize OpenLit (optional but recommended)
 openlit.init(otlp_endpoint="http://127.0.0.1:4318")
 
-# Define type-safe operations
-@ops
+# Define operations - type checked at import time
+@ops(name="clean_text")
 def clean_text(text: str) -> str:
     return text.lower().strip()
 
-@ops
+@ops(name="tokenize")
 def tokenize(text: str) -> List[str]:
     return text.split()
 
-@ops
+@ops(name="analyze")
 def analyze(tokens: List[str]) -> Dict[str, int]:
     from collections import Counter
     return dict(Counter(tokens))
 
-# Create a pipeline - types are checked automatically
-@graph
-def process_text(text: str) -> Dict[str, int]:
-    return clean_text >> tokenize >> analyze
+# Build pipeline - type compatibility checked at definition time
+pipeline = (
+    Graph("text_processing")
+    .then(clean_text)  # str -> str
+    .then(tokenize)    # str -> List[str]
+    .then(analyze)     # List[str] -> Dict[str, int]
+)
 
-# Use the pipeline
-result = process_text("Hello World! Hello Hapax!")
+# Execute pipeline - types checked at runtime
+result = pipeline.execute("Hello World! Hello Hapax!")
 ```
 
 ## Core Concepts
 
 ### 1. Operations
 
-Operations are pure functions with automatic type checking:
+Operations are pure functions with multi-stage type checking:
 
 ```python
 @ops(name="summarize", tags=["nlp"])
@@ -75,19 +81,22 @@ def summarize(text: str) -> str:
     """Generate a concise summary."""
     return summary
 
-# Types are checked automatically
-result = summarize(42)  # TypeError: Expected str, got int
+# Type checking happens at:
+# 1. Import time - through @ops decorator
+# 2. Definition time - when used in a graph
+# 3. Runtime - during execution
+result = summarize(42)  # Runtime TypeError: Expected str, got int
 ```
 
 ### 2. Graph Building
 
-Build complex pipelines with automatic validation:
+Build complex pipelines with immediate type validation:
 
 ```python
-# Using the fluent API
+# Using the fluent API - type compatibility checked at definition time
 pipeline = (
     Graph("text_analysis")
-    .then(clean_text)      # Returns str
+    .then(clean_text)      # str -> str
     .branch(
         summarize,         # str -> str
         sentiment_analysis # str -> float
@@ -95,10 +104,8 @@ pipeline = (
     .merge(combine_results)
 )
 
-# Or using the @graph decorator
-@graph(name="text_pipeline")
-def analyze_text(text: str) -> Dict[str, Any]:
-    return clean >> analyze
+# Or using the >> operator for composition
+pipeline = clean_text >> tokenize >> analyze  # Type compatibility checked immediately
 ```
 
 ### 3. Control Flow
