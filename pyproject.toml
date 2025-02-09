@@ -11,6 +11,9 @@ dependencies = [
     "matplotlib>=3.0.0",
     "openai>=1.61.1",
     "python-dotenv>=1.0.0",
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "openlit>=1.33.8",
 ]
 
 [build-system]
