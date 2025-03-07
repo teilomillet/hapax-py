@@ -12,7 +12,6 @@ from typing import Dict, List, Union, Any
 from openai import OpenAI
 from dotenv import load_dotenv
 from hapax import Graph, ops
-from hapax.core.flow import Merge
 
 # Load environment variables
 load_dotenv()
