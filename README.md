@@ -209,10 +209,173 @@ BranchError: Errors in branches: [('sentiment', ValueError('Invalid input'))]
 
 ## Documentation
 
-For more detailed information, check out:
-- [Comprehensive Guide](docs/guide.md)
-- [Graph API Reference](docs/graph.md)
-- [OpenLit Integration](docs/openlit.md)
+The documentation is organized into the following sections:
+
+1. **Getting Started**
+   - [Installation Guide](docs/installation.md) - Requirements and installation options
+   - [Quick Start Guide](docs/quickstart.md) - Get up and running in under 5 minutes
+   - [Comprehensive Guide](docs/guide.md) - In-depth explanation of all key concepts
+   - [Examples](docs/examples.md) - Code examples demonstrating various features
+
+2. **Core Features**
+   - [Graph API Reference](docs/graph.md) - Complete reference for the Graph API and building pipelines
+   - [API Reference](docs/api_reference.md) - Comprehensive reference for all Hapax classes and functions
+
+3. **Integrations**
+   - [OpenLit Basics](docs/openlit.md) - Simple monitoring setup with OpenLit
+   - [Advanced OpenLit Integration](docs/openlit_integration.md) - GPU monitoring, evaluations, and advanced features
+
+4. **Advanced Features**
+   - [Evaluation Decorators](docs/evaluation_decorators.md) - Using evaluation decorators for content safety
+
+5. **Support and Troubleshooting**
+   - [Troubleshooting Guide](docs/troubleshooting.md) - Solutions for common issues
+
+For a complete overview, start with the [documentation index](docs/index.md).
+
+## Hapax Documentation Assistant (MCP)
+
+The Hapax Documentation Assistant is an MCP (Model Context Protocol) server that provides AI-powered access to Hapax documentation and source code through tools that can be used by AI assistants like Claude in Cursor.
+
+### Features
+
+- 🔍 **Smart Documentation Search**: Find relevant documentation based on natural language queries
+- 📚 **Source Code Navigation**: Explore and understand Hapax source code
+- 🛠️ **Implementation Guidance**: Get guidance on implementing specific patterns or features
+- 🔧 **Troubleshooting**: Get help with errors and issues
+- 📖 **Topic Exploration**: Comprehensive exploration of Hapax concepts and topics
+
+### Installation
+
+The Documentation Assistant is included in the main Hapax repository:
+
+1. Clone the Hapax repository:
+   ```bash
+   git clone https://github.com/teilomillet/hapax-py.git
+   cd hapax-py
+   ```
+
+2. Install dependencies:
+   ```bash
+   uv install -e .
+   ```
+
+### Running the server
+
+You can run the documentation server and point it to any Hapax project (including this one):
+
+```bash
+# To use with the current repository
+python hapax_docs_server.py run
+
+# To use with another Hapax project
+HAPAX_DOCS_DIR=/path/to/other-project/docs HAPAX_SOURCE_DIR=/path/to/other-project/src python hapax_docs_server.py run
+```
+
+For development and testing, you can use MCP Inspector:
+```bash
+# For the current repository
+python -m mcp dev hapax_docs_server.py
+
+# For another project
+HAPAX_DOCS_DIR=/path/to/other-project/docs HAPAX_SOURCE_DIR=/path/to/other-project/src python -m mcp dev hapax_docs_server.py
+```
+
+### Installing in Cursor
+
+To use the Hapax Documentation Assistant in Cursor:
+
+1. Go to **Cursor Settings > Features > MCP** 
+2. Click the **+ Add New MCP Server** button
+3. Configure as follows:
+   - **Type**: CLI (stdio transport)
+   - **Name**: Hapax Documentation Assistant
+   - **Command**: 
+     ```
+     # To use with the hapax-py repository
+     python /path/to/hapax-py/hapax_docs_server.py run
+     
+     # To use with another project
+     HAPAX_DOCS_DIR=/path/to/other-project/docs HAPAX_SOURCE_DIR=/path/to/other-project/src python /path/to/hapax-py/hapax_docs_server.py run
+     ```
+
+### Path Requirements
+
+When configuring the server in Cursor:
+
+- Use absolute paths for the server script and any external project directories
+- You can create a shell script wrapper if you need more complex environment setup:
+
+Example wrapper script (`hapax_docs_helper.sh`):
+```bash
+#!/bin/bash
+# Path to the hapax-py repository
+HAPAX_ASSISTANT_PATH=/path/to/hapax-py
+
+# Optional: Point to another project
+# export HAPAX_DOCS_DIR=/path/to/other-project/docs
+# export HAPAX_SOURCE_DIR=/path/to/other-project/src
+
+# Run the assistant
+python $HAPAX_ASSISTANT_PATH/hapax_docs_server.py run
+```
+
+Then in Cursor, set the command to: `/path/to/hapax_docs_helper.sh`
+
+### Project-Specific Configuration
+
+For project-specific configuration in Cursor, create a `.cursor/mcp.json` file in your project:
+
+```json
+{
+  "mcpServers": {
+    "hapax-docs": {
+      "command": "python",
+      "args": ["/absolute/path/to/hapax-py/hapax_docs_server.py", "run"]
+    }
+  }
+}
+```
+
+Or to use with the current project directory:
+
+```json
+{
+  "mcpServers": {
+    "hapax-docs": {
+      "command": "bash",
+      "args": ["-c", "HAPAX_DOCS_DIR=./docs HAPAX_SOURCE_DIR=./src python /absolute/path/to/hapax-py/hapax_docs_server.py run"]
+    }
+  }
+}
+```
+
+### Available Tools
+
+The Hapax Documentation Assistant provides the following tools:
+
+- **search_docs**: Search the Hapax documentation and source code
+- **get_section_content**: Get detailed information about a documentation section
+- **get_implementation_pattern**: Get guidance on implementing specific patterns
+- **get_source_element**: View source code for specific elements (functions, classes, etc.)
+- **find_usage_examples_tool**: Find examples of how components are used in the codebase
+- **get_implementation_guidance**: Get guidance on implementing features or components
+- **troubleshoot_issue**: Get help with errors or issues
+- **understand_hapax_component**: Get comprehensive information about a Hapax component
+- **explore_hapax_topic**: Explore general topics in the Hapax framework
+
+### Using the Tools in Agent
+
+Once added, the Hapax Documentation Assistant will be available to the Agent in Cursor's Composer. You can:
+
+1. Open Composer in Cursor
+2. Ask questions about Hapax documentation, for example:
+   - "How do I use the Graph component in Hapax?"
+   - "Search for documentation about operations in Hapax"
+   - "Show me an example of implementing error handling in Hapax"
+
+The Agent will automatically use your MCP tools when relevant. You can also directly prompt tool usage by mentioning a specific tool:
+- "Use the search_docs tool to find information about error handling in Hapax"
 
 ## License
 
