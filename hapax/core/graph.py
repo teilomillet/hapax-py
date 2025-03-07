@@ -1,5 +1,6 @@
 """Graph builder for Hapax."""
-from typing import TypeVar, Generic, List, Any, Callable, Optional, Union
+from typing import TypeVar, Generic, List, Any, Callable, Optional, Union, Dict
+import logging
 from .base import BaseOperation
 from .models import Operation, OpConfig
 from .flow import Branch, Merge, Condition, Loop
@@ -7,6 +8,9 @@ from .flow import Branch, Merge, Condition, Loop
 T = TypeVar('T')
 U = TypeVar('U')
 V = TypeVar('V')
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class Graph(Generic[T, U]):
     """A fluent API for building computation graphs.
@@ -43,6 +47,70 @@ class Graph(Generic[T, U]):
         self._current_merge: Optional[Merge] = None
         self._current_condition: Optional[Condition] = None
         self._current_loop: Optional[Loop] = None
+        self._gpu_monitoring: bool = False
+        self._gpu_config: Dict[str, Any] = {}
+        self._evaluator = None
+        self._evaluation_config: Dict[str, Any] = {}
+        self.last_evaluation = None
+    
+    def with_gpu_monitoring(
+        self, 
+        enabled: bool = True, 
+        sample_rate_seconds: int = 5,
+        custom_config: Optional[Dict[str, Any]] = None
+    ) -> 'Graph[T, U]':
+        """Enable GPU monitoring for this graph execution.
+        
+        Args:
+            enabled: Whether to enable GPU monitoring
+            sample_rate_seconds: How often to sample GPU metrics (in seconds)
+            custom_config: Additional configuration for GPU monitoring
+            
+        Returns:
+            The graph instance for method chaining
+        """
+        self._gpu_monitoring = enabled
+        self._gpu_config = custom_config or {}
+        self._gpu_config.update({
+            "gpu_monitoring": enabled,
+            "gpu_sample_rate": sample_rate_seconds
+        })
+        return self
+    
+    def with_evaluation(
+        self,
+        eval_type: str = "all",
+        threshold: float = 0.5,
+        provider: str = "openai",
+        fail_on_evaluation: bool = True,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        custom_config: Optional[Dict[str, Any]] = None
+    ) -> 'Graph[T, U]':
+        """Add OpenLIT-powered evaluation to the graph output.
+        
+        Args:
+            eval_type: Type of evaluation ('all', 'hallucination', 'bias', 'toxicity')
+            threshold: Score threshold for failing evaluation (0.0 to 1.0)
+            provider: LLM provider for evaluation ('openai', 'anthropic')
+            fail_on_evaluation: Whether to raise an exception on evaluation failure
+            model: Specific model to use (optional)
+            api_key: API key for the provider (optional)
+            custom_config: Additional configuration for the evaluator
+            
+        Returns:
+            The graph instance for method chaining
+        """
+        self._evaluation_config = {
+            "eval_type": eval_type,
+            "threshold": threshold,
+            "provider": provider,
+            "fail_on_evaluation": fail_on_evaluation,
+            "model": model,
+            "api_key": api_key,
+            **(custom_config or {})
+        }
+        return self
     
     def then(self, operation: Union[BaseOperation[T, U], Callable[[T], U]]) -> 'Graph[T, U]':
         """Add an operation to the graph.
@@ -161,7 +229,58 @@ class Graph(Generic[T, U]):
         return self.then(loop)
     
     def execute(self, input_data: T) -> U:
-        """Execute the graph with the given input data."""
+        """Execute the graph with the given input data.
+        
+        Args:
+            input_data: Input data for the first operation
+            
+        Returns:
+            Output of the last operation
+        """
+        # Set up GPU monitoring if enabled
+        if self._gpu_monitoring:
+            try:
+                from hapax.monitoring import enable_gpu_monitoring
+                enable_gpu_monitoring(custom_config=self._gpu_config)
+                logger.info(f"GPU monitoring enabled for graph '{self.name}'")
+            except ImportError:
+                logger.warning("Could not import hapax.monitoring. GPU monitoring not enabled.")
+        
+        # Initialize the evaluator if configured
+        if self._evaluation_config:
+            try:
+                from hapax.evaluations import (
+                    AllEvaluator, 
+                    HallucinationEvaluator,
+                    BiasEvaluator,
+                    ToxicityEvaluator
+                )
+                
+                eval_type = self._evaluation_config.get("eval_type", "all")
+                eval_map = {
+                    "all": AllEvaluator,
+                    "hallucination": HallucinationEvaluator,
+                    "bias": BiasEvaluator,
+                    "toxicity": ToxicityEvaluator
+                }
+                
+                if eval_type in eval_map:
+                    evaluator_cls = eval_map[eval_type]
+                    self._evaluator = evaluator_cls(
+                        provider=self._evaluation_config.get("provider", "openai"),
+                        threshold=self._evaluation_config.get("threshold", 0.5),
+                        collect_metrics=True,
+                        model=self._evaluation_config.get("model"),
+                        api_key=self._evaluation_config.get("api_key")
+                    )
+                    logger.info(f"Evaluation ({eval_type}) enabled for graph '{self.name}'")
+            except ImportError:
+                logger.warning("Could not import hapax.evaluations. Evaluation not enabled.")
+        
+        # Clear any previous evaluation results
+        self.last_evaluation = None
+        
+        # Original execute logic
         if not self._operations:
             raise ValueError("Graph has no operations")
         
@@ -187,7 +306,7 @@ class Graph(Generic[T, U]):
         elif self._current_loop:
             operation, condition, max_iterations = self._current_loop
             iterations = 0
-            while condition(result) and iterations < max_iterations:
+            while condition(result) and (max_iterations is None or iterations < max_iterations):
                 result = operation(result)
                 iterations += 1
         
@@ -196,7 +315,54 @@ class Graph(Generic[T, U]):
             for op in self._operations:
                 result = op(result)
         
+        # Perform evaluation if configured
+        if self._evaluator and isinstance(result, str):
+            try:
+                # Find context from graph operations
+                contexts = self._get_context_from_metadata() or []
+                
+                # Use input_data as prompt if it's a string
+                prompt = str(input_data) if isinstance(input_data, str) else ""
+                
+                # Evaluate the result
+                eval_result = self._evaluator.evaluate(
+                    text=result,
+                    contexts=contexts,
+                    prompt=prompt
+                )
+                
+                # Store evaluation results
+                self.last_evaluation = eval_result
+                
+                # Check if evaluation failed and should raise error
+                fail_on_eval = self._evaluation_config.get("fail_on_evaluation", True)
+                if fail_on_eval and eval_result.get("verdict") == "yes":
+                    from hapax.core.decorators import EvaluationError
+                    raise EvaluationError(
+                        f"Graph output failed {self._evaluator.__class__.__name__} evaluation: "
+                        f"{eval_result}"
+                    )
+            except Exception as e:
+                logger.error(f"Error during evaluation: {e}")
+                self.last_evaluation = {
+                    "error": str(e),
+                    "verdict": "error"
+                }
+                
         return result
+    
+    def _get_context_from_metadata(self) -> List[str]:
+        """Extract context from operations metadata."""
+        contexts = []
+        for op in self._operations:
+            if hasattr(op, "config") and hasattr(op.config, "metadata"):
+                ctx = op.config.metadata.get("context")
+                if ctx:
+                    if isinstance(ctx, list):
+                        contexts.extend(ctx)
+                    else:
+                        contexts.append(str(ctx))
+        return contexts
     
     def __rshift__(self, other: Union[BaseOperation[U, V], 'Graph[U, V]']) -> 'Graph[T, V]':
         """Support the >> operator for composing graphs."""
