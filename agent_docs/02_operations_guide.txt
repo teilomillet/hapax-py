@@ -1,0 +1,95 @@
+HAPAX OPERATIONS GUIDE FOR AI ASSISTANTS
+====================================
+
+OPERATIONS OVERVIEW
+-----------------
+In hapax, operations are the fundamental building blocks. An operation takes an input of type T and produces an output of type U. Each operation is wrapped in runtime type checking to ensure data integrity throughout the pipeline.
+
+THE @ops DECORATOR
+----------------
+The @ops decorator is the primary way to create operations in hapax. It converts a regular Python function into an Operation object.
+
+SYNTAX AND PARAMETERS
+-------------------
+```python
+@ops(
+    name: Optional[str] = None,         # Name of the operation (defaults to function name)
+    description: Optional[str] = None,  # Description (defaults to function docstring)
+    tags: Optional[List[str]] = None,   # Tags for categorization
+    metadata: Optional[Dict[str, Any]] = None,  # Additional metadata
+    openlit_config: Optional[Dict[str, Any]] = None  # OpenLIT configuration
+)
+def my_operation(input_data: InputType) -> OutputType:
+    # Implementation
+    return result
+```
+
+TYPE HANDLING RULES
+-----------------
+1. Every operation MUST have type annotations for input and output
+2. The operation will perform runtime type checking on inputs and outputs
+3. Type compatibility is checked when operations are composed
+4. If an operation receives incompatible types, a TypeError is raised
+
+COMPOSITION WITH >>
+-----------------
+Operations can be composed using the '>>' operator, creating a pipeline where output of one operation becomes input to the next.
+
+Example:
+```python
+# Two separate operations
+@ops(name="tokenize")
+def tokenize(text: str) -> List[str]:
+    return text.split()
+    
+@ops(name="count_tokens")
+def count_tokens(tokens: List[str]) -> int:
+    return len(tokens)
+    
+# Composed operation
+token_counter = tokenize >> count_tokens
+result = token_counter("hello world")  # Returns 2
+```
+
+BEST PRACTICES FOR OPERATIONS
+---------------------------
+1. Keep operations focused on a single transformation
+2. Use descriptive names and docstrings
+3. Be explicit with type annotations
+4. Handle errors gracefully within operations
+5. Use composition (>>) instead of nesting function calls
+6. When working with LLMs, handle response parsing inside the operation
+
+HANDLING LLM RESPONSES IN OPERATIONS
+----------------------------------
+LLM responses often need parsing and error handling. Always include:
+1. Exception handling for malformed responses
+2. Fallback values for missing fields
+3. Type conversion (string to float, etc.)
+4. Validation of output structure
+
+Example:
+```python
+@ops(name="sentiment_analysis")
+def analyze_sentiment(text: str) -> Dict[str, float]:
+    try:
+        response = llm_client.generate(prompt=f"Analyze sentiment: {text}")
+        data = json.loads(response)
+        return {
+            "positive": float(data.get("positive", 0.0)),
+            "negative": float(data.get("negative", 0.0)),
+            "neutral": float(data.get("neutral", 1.0))
+        }
+    except Exception:
+        # Fallback if parsing fails
+        return {"positive": 0.0, "negative": 0.0, "neutral": 1.0}
+```
+
+AUTO-MAPPING OVER LISTS
+---------------------
+Operations automatically map over lists if:
+1. The input is a list
+2. The operation doesn't expect a list input type
+3. auto_map=True (default) is set
+
+This allows operations designed for single items to work with batches without modification. 

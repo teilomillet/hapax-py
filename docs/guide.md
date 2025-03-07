@@ -2,6 +2,17 @@
 
 Hapax is a powerful type-safe graph execution framework that enables you to build composable, monitored data processing pipelines with strong type checking and built-in observability. This guide will explain all key concepts and their relationships.
 
+## About This Guide
+
+This guide provides an in-depth explanation of Hapax's core concepts and features. It's designed to help you understand the framework's architecture and design principles.
+
+For more specific documentation:
+- [Quick Start Guide](quickstart.md) - For getting started quickly
+- [Graph API Reference](graph.md) - For detailed information on building graphs
+- [OpenLit Integration](openlit.md) - For monitoring and observability features
+- [Advanced OpenLIT Integration](openlit_integration.md) - For GPU monitoring and evaluations
+- [Evaluation Decorators](evaluation_decorators.md) - For content safety features
+
 ## Core Concepts and Their Differences
 
 ### Graph vs. graph vs. Graph API

@@ -1,0 +1,319 @@
+HAPAX IMPLEMENTATION PATTERNS FOR AI ASSISTANTS
+==========================================
+
+COMMON IMPLEMENTATION PATTERNS
+----------------------------
+This document covers structured patterns for implementing hapax in common scenarios.
+
+PATTERN 1: SIMPLE SEQUENTIAL PIPELINE
+-----------------------------------
+Best for straightforward text processing with multiple steps.
+
+```python
+from hapax import Graph, ops
+from typing import List, Dict
+
+@ops(name="clean_text")
+def clean_text(text: str) -> str:
+    # Remove special chars, normalize whitespace
+    return " ".join(text.replace(r"[^\w\s]", " ").split())
+
+@ops(name="tokenize")
+def tokenize(text: str) -> List[str]:
+    return text.lower().split()
+
+@ops(name="count_tokens")
+def count_tokens(tokens: List[str]) -> Dict[str, int]:
+    counts = {}
+    for token in tokens:
+        counts[token] = counts.get(token, 0) + 1
+    return counts
+
+# Build pipeline
+pipeline = (
+    Graph("text_processor")
+    .then(clean_text)
+    .then(tokenize)
+    .then(count_tokens)
+)
+
+# Use pipeline
+result = pipeline.execute("Hello, world! Hello again.")
+# Result: {"hello": 2, "world": 1, "again": 1}
+```
+
+PATTERN 2: PARALLEL ANALYSIS PIPELINE
+-----------------------------------
+Best for extracting multiple insights from the same text.
+
+```python
+from hapax import Graph, ops
+from typing import Dict, List, Any
+import json
+
+@ops(name="sentiment_analysis")
+def analyze_sentiment(text: str) -> Dict[str, float]:
+    # LLM-based sentiment analysis
+    response = llm_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "Return sentiment scores as JSON."},
+            {"role": "user", "content": text}
+        ],
+        response_format={"type": "json_object"}
+    )
+    data = json.loads(response.choices[0].message.content)
+    return {
+        "positive": float(data.get("positive", 0.0)),
+        "negative": float(data.get("negative", 0.0)),
+        "neutral": float(data.get("neutral", 1.0))
+    }
+
+@ops(name="entity_extraction")
+def extract_entities(text: str) -> List[Dict[str, str]]:
+    # LLM-based entity extraction
+    response = llm_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "Extract entities with their types."},
+            {"role": "user", "content": text}
+        ]
+    )
+    entities = []
+    for line in response.choices[0].message.content.split('\n'):
+        if ":" in line:
+            name, type_info = line.split(":", 1)
+            entities.append({"name": name.strip(), "type": type_info.strip()})
+    return entities
+
+@ops(name="summarize")
+def summarize(text: str) -> str:
+    # LLM-based summarization
+    response = llm_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "Create a concise summary."},
+            {"role": "user", "content": text}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
+def combine_results(results: List[Any]) -> Dict[str, Any]:
+    summary, sentiment, entities = results
+    return {
+        "summary": summary,
+        "sentiment": sentiment,
+        "entities": entities
+    }
+
+# Build pipeline
+pipeline = (
+    Graph("text_analysis")
+    .branch(
+        summarize,
+        analyze_sentiment,
+        extract_entities
+    )
+    .merge(combine_results)
+)
+
+# Use pipeline
+result = pipeline.execute("Tesla announced record profits yesterday...")
+```
+
+PATTERN 3: CONDITIONAL PROCESSING
+-------------------------------
+Best for workflows with different paths based on content.
+
+```python
+from hapax import Graph, ops
+from typing import Dict, List, Union
+
+@ops(name="detect_language")
+def detect_language(text: str) -> str:
+    # Language detection logic
+    if "bonjour" in text.lower():
+        return "french"
+    return "english"  # Default
+
+@ops(name="english_processing")
+def process_english(text: str) -> Dict[str, Any]:
+    # Process English text
+    return {"language": "english", "processed_text": text.upper()}
+
+@ops(name="french_processing")
+def process_french(text: str) -> Dict[str, Any]:
+    # Process French text
+    return {"language": "french", "processed_text": text.lower()}
+
+def is_english(detected_lang: str) -> bool:
+    return detected_lang == "english"
+
+# Build pipeline
+pipeline = (
+    Graph("language_processor")
+    .then(detect_language)
+    .condition(
+        is_english,
+        process_english,  # If English
+        process_french    # If not English
+    )
+)
+
+# Use pipeline
+result = pipeline.execute("Bonjour, monde!")
+# Result: {"language": "french", "processed_text": "bonjour, monde!"}
+```
+
+PATTERN 4: ITERATIVE PROCESSING WITH LOOPS
+----------------------------------------
+Best for processing that requires multiple passes until a condition is met.
+
+```python
+from hapax import Graph, ops
+
+@ops(name="refine_text")
+def refine_text(state: Dict[str, Any]) -> Dict[str, Any]:
+    text = state["text"]
+    iterations = state["iterations"]
+    
+    # Refine the text (e.g., make it more concise)
+    refined = text[:int(len(text) * 0.9)]  # Simplistic example
+    
+    return {
+        "text": refined,
+        "iterations": iterations + 1,
+        "original_length": state["original_length"],
+        "current_length": len(refined)
+    }
+
+def continue_refinement(state: Dict[str, Any]) -> bool:
+    # Continue until text is 50% of original or 5 iterations
+    return (state["current_length"] > state["original_length"] * 0.5 and 
+            state["iterations"] < 5)
+
+# Build pipeline
+pipeline = (
+    Graph("text_refiner")
+    .then(lambda text: {
+        "text": text,
+        "iterations": 0,
+        "original_length": len(text),
+        "current_length": len(text)
+    })
+    .loop(
+        refine_text,
+        continue_refinement
+    )
+    .then(lambda state: state["text"])  # Extract final text
+)
+
+# Use pipeline
+result = pipeline.execute("This is a very long text that needs refinement...")
+```
+
+PATTERN 5: ERROR HANDLING AND RECOVERY
+------------------------------------
+Best for robust pipelines that need to handle failures gracefully.
+
+```python
+from hapax import Graph, ops
+from typing import Dict, Optional, Union, Any
+
+@ops(name="risky_operation")
+def risky_operation(text: str) -> Dict[str, Any]:
+    try:
+        # Operation that might fail
+        if len(text) < 10:
+            raise ValueError("Text too short for analysis")
+            
+        # Normal processing
+        return {
+            "status": "success",
+            "result": text.upper(),
+            "error": None
+        }
+    except Exception as e:
+        # Error handling
+        return {
+            "status": "error",
+            "result": None,
+            "error": str(e)
+        }
+
+@ops(name="handle_success")
+def handle_success(result: Dict[str, Any]) -> str:
+    return f"Processed successfully: {result['result']}"
+
+@ops(name="handle_error")
+def handle_error(result: Dict[str, Any]) -> str:
+    return f"Error occurred: {result['error']}. Using fallback."
+
+def is_success(result: Dict[str, Any]) -> bool:
+    return result["status"] == "success"
+
+# Build pipeline
+pipeline = (
+    Graph("robust_processor")
+    .then(risky_operation)
+    .condition(
+        is_success,
+        handle_success,  # Success path
+        handle_error     # Error path
+    )
+)
+
+# Use pipeline
+result = pipeline.execute("Short")
+# Result: "Error occurred: Text too short for analysis. Using fallback."
+```
+
+PATTERN 6: COMPLEX ETL PIPELINE
+----------------------------
+Best for data extraction, transformation, and loading workflows.
+
+```python
+from hapax import Graph, ops
+from typing import Dict, List, Any
+
+@ops(name="extract_data")
+def extract_data(source: str) -> List[Dict[str, Any]]:
+    # Extract data from source (API, file, etc.)
+    # This is a mock example
+    if "users" in source:
+        return [
+            {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            {"id": 2, "name": "Bob", "email": "bob@example.com"}
+        ]
+    return []
+
+@ops(name="transform_users")
+def transform_users(users: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # Transform user data
+    return [{
+        "user_id": user["id"],
+        "full_name": user["name"].upper(),
+        "contact": user["email"],
+        "domain": user["email"].split("@")[1]
+    } for user in users]
+
+@ops(name="load_to_database")
+def load_to_database(transformed_users: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Mock database loading
+    return {
+        "status": "success",
+        "loaded_count": len(transformed_users),
+        "first_record": transformed_users[0] if transformed_users else None
+    }
+
+# Build ETL pipeline
+etl_pipeline = (
+    Graph("user_etl")
+    .then(extract_data)
+    .then(transform_users)
+    .then(load_to_database)
+)
+
+# Execute ETL process
+result = etl_pipeline.execute("users_endpoint")
+``` 

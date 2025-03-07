@@ -1,0 +1,45 @@
+HAPAX OVERVIEW FOR AI ASSISTANTS
+===========================
+
+WHAT IS HAPAX?
+-------------
+Hapax is a Python framework for building type-safe data processing pipelines, with a focus on LLM operations. It provides a simple, flexible API for defining operations, composing them into graphs, and executing them with proper error handling and monitoring.
+
+CORE CONCEPTS
+------------
+1. Operations: Atomic units of computation that transform data from one type to another
+2. Graphs: Directed flows of operations with support for branching and merging
+3. Type safety: Runtime type checking to ensure data flows correctly
+4. Composability: Operations can be composed using the '>>' operator
+5. Monitoring: Built-in support for GPU monitoring and telemetry
+6. Evaluation: Integration with OpenLIT for LLM response evaluation
+
+KEY ADVANTAGES
+-------------
+- Type checking at runtime prevents common errors
+- Flexible graph construction with branching and merging
+- Easy composition of operations
+- Built-in monitoring and visualization
+- Integration with external evaluation frameworks
+
+WHEN TO USE HAPAX
+----------------
+- LLM-based data processing pipelines
+- Multi-step transformations with different operations
+- Parallel processing of data
+- Workflows that need strong type guarantees
+- Projects that need operation monitoring and visualization
+
+CORE COMPONENTS
+--------------
+1. @ops decorator: Creates Operation objects from functions
+2. Operation class: Wraps functions with type checking and composition
+3. Graph class: Fluent API for building pipeline graphs
+4. Branch/Merge: Support for parallel operations and result combination
+
+HAPAX VS OTHER FRAMEWORKS
+------------------------
+- Unlike pure functional approaches, hapax adds runtime type checking
+- Unlike pure workflow engines, hapax focuses on type safety for data
+- More lightweight than full-scale data orchestration platforms
+- More focused on LLM operations than general data processing libraries 

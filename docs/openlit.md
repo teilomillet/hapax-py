@@ -1,6 +1,6 @@
-# OpenLit Integration in Hapax
+# Basic OpenLit Integration in Hapax
 
-Hapax is built on top of OpenLit to provide comprehensive monitoring and observability for your graph operations. The integration is designed to be simple by default, but customizable when needed.
+Hapax is built on top of OpenLit to provide comprehensive monitoring and observability for your graph operations. This document covers the basic integration with OpenLit. For advanced features such as GPU monitoring and evaluations, see the [Advanced OpenLit Integration](openlit_integration.md).
 
 ## Quick Setup
 
@@ -27,9 +27,7 @@ def process_text(text: str) -> List[str]:
 
 That's it! This will give you basic monitoring and observability for all your Hapax operations.
 
-## Advanced Configuration (Optional)
-
-If you need more control, you can configure OpenLit at different levels:
+## Basic Configuration
 
 ### 1. Global Configuration
 Use environment variables or the init function for application-wide settings:
@@ -66,7 +64,7 @@ def process_text(text: str) -> List[str]:
     return tokenize
 ```
 
-## Features
+## Basic Monitoring Features
 
 ### Automatic Monitoring
 - Execution time tracking
@@ -79,17 +77,6 @@ def process_text(text: str) -> List[str]:
 - Operation dependencies tracking
 - Intermediate results monitoring
 - Graph validation status
-
-### OpenLit Configuration Options
-```python
-openlit_config = {
-    "otlp_endpoint": str,        # OpenTelemetry endpoint URL
-    "environment": str,          # Environment (dev/prod/staging)
-    "application_name": str,     # Application identifier
-    "trace_content": bool,       # Whether to trace operation content
-    "disable_metrics": bool      # Disable metrics collection
-}
-```
 
 ## Best Practices
 
@@ -146,13 +133,13 @@ def analyze_text(text: str) -> Dict[str, int]:
 result = analyze_text("Hello world! Hello Hapax!")
 ```
 
-## Viewing Metrics
+## Advanced Features
 
-Access your metrics and traces through your configured OpenTelemetry backend. The data will include:
-- Operation execution spans
-- Graph execution spans
-- Operation metadata
-- Error traces
-- Custom attributes
+For more advanced OpenLIT features, including:
+- GPU Monitoring
+- LLM Evaluations (hallucination, bias, toxicity)
+- Custom Evaluation Providers
+
+See the [Advanced OpenLit Integration](openlit_integration.md) documentation.
 
 For more information about OpenLit, visit the [OpenLIT documentation](https://docs.openlit.dev).

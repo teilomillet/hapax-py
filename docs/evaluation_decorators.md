@@ -2,6 +2,17 @@
 
 The evaluation decorator system provides a pytest-like interface for running evaluations on function outputs. This allows you to easily integrate content safety checks into your existing code.
 
+## Relationship with OpenLIT Evaluators
+
+Hapax provides two complementary ways to evaluate content:
+
+1. **Using Evaluation Decorators** (covered in this document) - A lightweight, decorator-based approach for adding evaluations to any Python function
+2. **OpenLIT Integration for Graphs** (covered in [Advanced OpenLIT Integration](openlit_integration.md)) - Direct integration with OpenLIT evaluators in graph execution
+
+The `@eval` decorator can work with both:
+- Built-in local evaluators
+- OpenLIT-based evaluators (when `use_openlit=True`)
+
 ## Setup
 
 First, register the evaluators you want to use:
@@ -50,6 +61,26 @@ class MyEvaluator:
         return 0.5
 
 register_evaluator("my_eval", MyEvaluator)
+```
+
+### Using with OpenLIT Evaluators
+
+To use the OpenLIT-based evaluators (which use LLMs for evaluation):
+
+```python
+@eval(
+    evals=["hallucination"],
+    threshold=0.7,
+    use_openlit=True,  # This enables OpenLIT evaluators
+    openlit_provider="openai",  # "openai" or "anthropic"
+    metadata={
+        "contexts": ["Einstein won the Nobel Prize in Physics in 1921."],
+        "prompt": "When did Einstein win the Nobel Prize?"
+    }
+)
+def generate_response(prompt: str) -> str:
+    # Your generation code
+    return "Einstein won the Nobel Prize in 1922."  # Will fail evaluation
 ```
 
 ### Result Caching

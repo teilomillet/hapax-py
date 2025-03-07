@@ -1,0 +1,180 @@
+HAPAX EVALUATION AND MONITORING GUIDE FOR AI ASSISTANTS
+=================================================
+
+EVALUATION OVERVIEW
+-----------------
+Hapax provides built-in capabilities for evaluating LLM outputs, primarily through:
+1. The @eval decorator for individual function evaluation
+2. Graph-level evaluation with .with_evaluation()
+3. Integration with OpenLIT for standardized evaluations
+
+USING THE @eval DECORATOR
+-----------------------
+The @eval decorator evaluates the output of a function against specific criteria:
+
+```python
+from hapax import eval
+
+@eval(
+    evals=["hallucination", "bias"],  # Evaluation types
+    threshold=0.7,                     # Minimum acceptable score
+    metadata={"domain": "finance"},    # Additional context
+    cache_results=True,                # Cache evaluation results
+    use_openlit=False,                 # Whether to use OpenLIT
+    openlit_provider=None              # LLM provider for OpenLIT
+)
+def generate_response(prompt: str) -> str:
+    # Implementation
+    return response
+```
+
+When called, this function will:
+1. Generate the response
+2. Run evaluations on the response
+3. Raise an exception if any evaluation score is below threshold
+4. Return the original response if all evaluations pass
+
+AVAILABLE EVALUATORS
+------------------
+Standard evaluators include:
+- "hallucination": Checks for factual accuracy
+- "bias": Detects social/political biases
+- "toxicity": Identifies harmful content
+- "all": Runs all available evaluators
+
+CUSTOM EVALUATORS
+---------------
+Custom evaluators can be registered and used:
+
+```python
+from hapax.evaluations import register_evaluator
+
+class MyCustomEvaluator:
+    def evaluate(self, text: str, **kwargs) -> Dict[str, float]:
+        # Evaluation logic
+        return {"my_metric": score}
+
+register_evaluator("my_custom", MyCustomEvaluator)
+
+@eval(evals=["my_custom"], threshold=0.8)
+def my_function(input: str) -> str:
+    # Implementation
+    return output
+```
+
+GRAPH-LEVEL EVALUATION
+--------------------
+Evaluation can be applied to the entire graph output:
+
+```python
+graph = (
+    Graph("my_pipeline")
+    .then(process)
+    .with_evaluation(
+        eval_type="hallucination",
+        threshold=0.7,
+        provider="openai",
+        fail_on_evaluation=True
+    )
+)
+```
+
+GPU MONITORING
+------------
+Hapax includes GPU monitoring capabilities for resource-intensive LLM operations:
+
+```python
+from hapax import enable_gpu_monitoring, get_gpu_metrics
+
+# Enable monitoring globally
+enable_gpu_monitoring(sample_rate_seconds=5)
+
+# Or enable for a specific graph
+graph = (
+    Graph("gpu_intensive_pipeline")
+    .then(heavy_operation)
+    .with_gpu_monitoring(
+        enabled=True,
+        sample_rate_seconds=1,
+        custom_config={
+            "log_to_file": True,
+            "log_path": "/path/to/logs.json",
+            "metrics": ["memory.used", "utilization.gpu"]
+        }
+    )
+)
+
+# Get current metrics
+metrics = get_gpu_metrics()
+print(f"GPU Memory Used: {metrics['memory.used']} MB")
+print(f"GPU Utilization: {metrics['utilization.gpu']}%")
+```
+
+INTEGRATION WITH OPENLIT
+----------------------
+OpenLIT provides standardized evaluations for LLM outputs:
+
+```python
+from hapax import set_openlit_config
+
+# Configure OpenLIT globally
+set_openlit_config({
+    "provider": "openai",
+    "api_key": os.environ.get("OPENAI_API_KEY"),
+    "model": "gpt-4",
+    "otlp_endpoint": "http://localhost:4318",
+    "trace_content": True
+})
+
+# Use OpenLIT evaluations
+@eval(
+    evals=["factual_consistency", "semantic_similarity"],
+    threshold=0.8,
+    use_openlit=True
+)
+def generate_content(prompt: str) -> str:
+    # Implementation
+    return content
+```
+
+OPENLIT EVALUATORS
+----------------
+Available OpenLIT evaluators include:
+- "factual_consistency": Factual accuracy
+- "semantic_similarity": Semantic match to reference
+- "answer_relevance": Relevance to query
+- "harmfulness": Detection of harmful content
+- "bias": Social, political, or demographic bias
+
+VISUALIZING EVALUATION RESULTS
+----------------------------
+Evaluation results can be visualized:
+
+```python
+from hapax.evaluations import plot_evaluation_results
+
+# After running evaluations
+plot_evaluation_results(
+    graph.last_evaluation,
+    threshold=0.7,
+    title="Content Quality Evaluation"
+)
+```
+
+BEST PRACTICES FOR EVALUATION
+---------------------------
+1. Set appropriate thresholds based on use case criticality
+2. Use multiple evaluation types for comprehensive quality control
+3. Cache results for expensive evaluations
+4. Include relevant metadata to improve evaluation context
+5. Add error handling for evaluation failures
+6. Monitor evaluation performance over time
+7. Use domain-specific evaluators when available
+
+MONITORING INTEGRATION POINTS
+---------------------------
+Hapax monitoring can integrate with:
+1. Local logging to files
+2. OpenTelemetry for distributed tracing
+3. Custom monitoring callbacks
+4. Visualization tools for real-time dashboards 

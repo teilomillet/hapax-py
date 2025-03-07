@@ -1,9 +1,8 @@
 """Tests for the evaluation module with OpenLIT integration."""
 import unittest
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock
 import os
 import sys
-from typing import Dict, Any, List, Optional
 
 # Add root directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

@@ -1,0 +1,133 @@
+HAPAX DOCUMENTATION INDEX FOR AI ASSISTANTS
+======================================
+
+This directory contains documentation specifically designed for AI assistants (like Claude) to understand and implement hapax, a Python framework for building type-safe data processing pipelines.
+
+DOCUMENT GUIDE
+------------
+Each document focuses on a specific aspect of hapax:
+
+1. 01_hapax_overview.txt
+   - Core concepts and components
+   - When to use hapax
+   - Key advantages
+   - Comparison with other frameworks
+
+2. 02_operations_guide.txt
+   - @ops decorator detailed usage
+   - Type checking system
+   - Composition with >>
+   - Best practices for operations
+   - Handling LLM responses
+
+3. 03_graph_building.txt
+   - Creating and using Graph objects
+   - Sequential operations with .then()
+   - Parallel execution with .branch()
+   - Combining results with .merge()
+   - Conditional processing and loops
+   - Visualizing graphs
+
+4. 04_evaluation_monitoring.txt
+   - Using the @eval decorator
+   - Configuring evaluators
+   - Creating custom evaluators
+   - GPU monitoring
+   - Integration with OpenLIT
+   - Visualization of evaluation results
+
+5. 05_implementation_patterns.txt
+   - Sequential pipeline pattern
+   - Parallel analysis pattern
+   - Conditional processing pattern
+   - Iterative processing pattern
+   - Error handling pattern
+   - ETL pipeline pattern
+
+6. 06_integration_guide.txt
+   - Adding hapax to existing codebases
+   - Adapting class-based code
+   - Handling stateful processing
+   - Integration with async code
+   - Integration with web frameworks
+   - Gradual adoption strategy
+
+7. 07_troubleshooting.txt
+   - Type mismatch errors
+   - Composition errors
+   - LLM response parsing issues
+   - Graph execution errors
+   - Memory usage issues
+   - Evaluation failures
+
+IMPLEMENTATION GUIDANCE
+---------------------
+When implementing hapax in a codebase, follow these general principles:
+
+1. Add proper type annotations to all functions
+2. Break complex workflows into smaller operations
+3. Use composition (>>) for sequential operations
+4. Use branch/merge for parallel processing
+5. Add error handling within operations
+6. Implement monitoring for resource-intensive operations
+7. Add evaluations for LLM-generated content
+
+The diagram below shows the relationship between key components:
+
+```
+                      +------------------+
+                      |    @ops          |
+                      |    decorator     |
+                      +--------+---------+
+                               |
+                               v
++-------------+      +------------------+      +------------------+
+|  Function   |----->|    Operation     |----->|   Composition    |
+|  with types |      |    Object        |      |   (op1 >> op2)   |
++-------------+      +--------+---------+      +------------------+
+                               |
+                               v
+                      +------------------+
+                      |   Graph          |
+                      |   Construction   |
+                      +--------+---------+
+                               |
+                      +--------v---------+
+                      |  Execution,      |
+                      |  Monitoring,     |
+                      |  Visualization   |
+                      +------------------+
+```
+
+SEARCH GUIDANCE
+-------------
+To find specific information, search for ALL CAPS SECTION HEADERS in the documentation files:
+
+- For API details: "SYNTAX AND PARAMETERS"
+- For error solutions: "COMMON ISSUES AND SOLUTIONS"
+- For integration patterns: "STEP [number]"
+- For examples: "PATTERN [number]" or code blocks
+
+FILE STRUCTURE RECOMMENDATION
+---------------------------
+When implementing a hapax-based solution, consider this file structure:
+
+```
+my_project/
+├── operations/
+│   ├── __init__.py
+│   ├── text_processing.py  # Operation definitions
+│   ├── data_extraction.py
+│   └── llm_operations.py
+├── pipelines/
+│   ├── __init__.py
+│   └── main_pipeline.py    # Graph definitions
+├── utils/
+│   ├── __init__.py
+│   ├── evaluators.py       # Custom evaluators
+│   └── monitoring.py       # Monitoring setup
+├── config.py               # Configuration
+└── main.py                 # Entry point
+```
+
+This organization separates concerns and makes the codebase easier to maintain. 

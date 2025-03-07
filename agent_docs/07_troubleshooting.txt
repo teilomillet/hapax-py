@@ -1,0 +1,335 @@
+HAPAX TROUBLESHOOTING GUIDE FOR AI ASSISTANTS
+=======================================
+
+COMMON ISSUES AND SOLUTIONS
+-------------------------
+This guide provides solutions for common issues when working with hapax.
+
+TYPE MISMATCH ERRORS
+------------------
+ISSUE: Type mismatch errors during operation execution.
+
+```
+TypeError: Input type mismatch in operation_name. Expected <expected_type>, got <actual_type>
+```
+
+DIAGNOSIS:
+1. The input to an operation doesn't match its declared input type
+2. Type annotations may be incorrect
+3. Data transformation may be producing unexpected types
+
+SOLUTIONS:
+1. Check type annotations on the operation:
+```python
+@ops(name="operation_name")
+def operation_func(input_data: ExpectedType) -> OutputType:
+    # Implementation
+```
+
+2. Add explicit type conversion before passing to operation:
+```python
+# Convert data to expected type
+converted_data = ExpectedType(input_data)
+result = operation.execute(converted_data)
+```
+
+3. Use intermediate operation for conversion:
+```python
+@ops(name="type_converter")
+def convert_type(input_data: ActualType) -> ExpectedType:
+    # Conversion logic
+    return ExpectedType(input_data)
+
+pipeline = (
+    Graph("pipeline")
+    .then(convert_type)  # First convert the type
+    .then(operation_func)  # Then process with original operation
+)
+```
+
+OPERATION COMPOSITION ERRORS
+-------------------------
+ISSUE: Unable to compose operations due to type incompatibility.
+
+```
+TypeError: Type mismatch in composition: output type <type1> is not compatible with input type <type2>
+```
+
+DIAGNOSIS:
+1. Output type of first operation doesn't match input type of second operation
+2. Type annotations may be incorrect
+
+SOLUTIONS:
+1. Check and align type annotations between operations:
+```python
+@ops(name="op1")
+def op1(data: str) -> List[str]:
+    # First operation
+    
+@ops(name="op2")
+def op2(tokens: List[str]) -> int:
+    # Second operation
+```
+
+2. Add adapter operation between incompatible operations:
+```python
+@ops(name="adapter")
+def adapt(data: Type1) -> Type2:
+    # Convert from Type1 to Type2
+    return converted
+
+pipeline = op1 >> adapt >> op2
+```
+
+LLM RESPONSE PARSING ERRORS
+------------------------
+ISSUE: Errors when parsing LLM responses in operations.
+
+```
+json.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+```
+
+DIAGNOSIS:
+1. LLM response isn't in expected format (e.g., not valid JSON)
+2. Response content might have unexpected structure
+3. Missing error handling for malformed responses
+
+SOLUTIONS:
+1. Add robust error handling in operations:
+```python
+@ops(name="llm_processor")
+def process_with_llm(text: str) -> Dict[str, Any]:
+    try:
+        response = llm_client.completion(prompt=text)
+        data = json.loads(response)
+        return data
+    except json.JSONDecodeError:
+        # Fallback when response isn't valid JSON
+        return {"error": "Invalid response format", "raw": response}
+    except Exception as e:
+        # General error fallback
+        return {"error": str(e)}
+```
+
+2. Use structured LLM prompt to enforce response format:
+```python
+messages = [
+    {"role": "system", "content": "You must respond with valid JSON only, in this format: {\"result\": \"value\"}"},
+    {"role": "user", "content": text}
+]
+```
+
+3. For OpenAI API, use response format parameter:
+```python
+response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=messages,
+    response_format={"type": "json_object"}
+)
+```
+
+GRAPH EXECUTION ERRORS
+-------------------
+ISSUE: Errors during graph execution.
+
+DIAGNOSIS:
+1. One of the operations in the graph failed
+2. Branch or merge operations may have incorrect implementations
+3. Condition predicates may be raising exceptions
+
+SOLUTIONS:
+1. Add error handling in graph execution:
+```python
+try:
+    result = graph.execute(input_data)
+except Exception as e:
+    print(f"Graph execution failed: {e}")
+    # Handle the error or use fallback
+```
+
+2. Implement error handling within operations:
+```python
+@ops(name="safe_operation")
+def safe_operation(data: InputType) -> OutputType:
+    try:
+        # Risky operation
+        return process(data)
+    except Exception as e:
+        # Log error and return fallback
+        logging.error(f"Operation failed: {e}")
+        return fallback_value
+```
+
+3. Use conditional branching for error recovery:
+```python
+def is_valid_data(data: Any) -> bool:
+    try:
+        # Validation logic
+        return validation_check(data)
+    except Exception:
+        return False
+
+graph.condition(
+    is_valid_data,
+    normal_processing,   # If valid
+    error_recovery       # If invalid or exception
+)
+```
+
+MEMORY USAGE ISSUES
+----------------
+ISSUE: High memory usage during pipeline execution.
+
+DIAGNOSIS:
+1. Processing large datasets without streaming
+2. Operations creating large intermediate results
+3. GPU memory leaks in LLM operations
+
+SOLUTIONS:
+1. Process data in batches:
+```python
+batch_size = 100
+results = []
+
+for i in range(0, len(data), batch_size):
+    batch = data[i:i+batch_size]
+    batch_results = pipeline.execute(batch)
+    results.extend(batch_results)
+```
+
+2. Use generators for efficient memory usage:
+```python
+@ops(name="stream_processor")
+def process_stream(data_generator: Iterator[Any]) -> Iterator[Any]:
+    for item in data_generator:
+        yield process_item(item)
+```
+
+3. Enable GPU monitoring to identify memory leaks:
+```python
+graph.with_gpu_monitoring(
+    enabled=True,
+    sample_rate_seconds=1
+)
+```
+
+4. Clear GPU memory after operations:
+```python
+@ops(name="gpu_llm_operation")
+def gpu_operation(input_data: str) -> str:
+    try:
+        return llm_client.generate(input_data)
+    finally:
+        # Clear GPU memory
+        torch.cuda.empty_cache()
+```
+
+EVALUATION FAILURES
+----------------
+ISSUE: Evaluations consistently failing.
+
+DIAGNOSIS:
+1. Threshold may be too high for the evaluator
+2. LLM responses don't meet quality requirements
+3. Evaluation configuration may be incorrect
+
+SOLUTIONS:
+1. Adjust evaluation threshold:
+```python
+@eval(evals=["hallucination"], threshold=0.6)  # Lower threshold
+def generate_response(prompt: str) -> str:
+    # Implementation
+```
+
+2. Improve LLM prompt engineering:
+```python
+system_prompt = """
+You are an AI assistant providing factual information.
+Always base your responses on verifiable facts.
+If you're unsure about something, acknowledge your uncertainty.
+"""
+```
+
+3. Use custom evaluators:
+```python
+class DomainSpecificEvaluator:
+    def evaluate(self, text: str, **kwargs) -> Dict[str, float]:
+        # Domain-specific evaluation logic
+        return {"domain_score": score}
+
+register_evaluator("domain", DomainSpecificEvaluator)
+
+@eval(evals=["domain"], threshold=0.7)
+def generate_domain_content(prompt: str) -> str:
+    # Implementation
+```
+
+PIPELINE VISUALIZATION ISSUES
+--------------------------
+ISSUE: Pipeline visualization not working or looking incorrect.
+
+DIAGNOSIS:
+1. Missing dependencies for visualization
+2. Complex pipeline topology causing layout issues
+3. Large number of operations making visualization cluttered
+
+SOLUTIONS:
+1. Install required dependencies:
+```bash
+pip install matplotlib networkx pydot
+```
+
+2. Customize visualization options:
+```python
+pipeline.visualize(
+    filename="pipeline.png",
+    figsize=(12, 8),
+    node_size=2000,
+    font_size=10,
+    edge_color='gray'
+)
+```
+
+3. Split complex pipelines into smaller sub-pipelines:
+```python
+preprocessing = Graph("preprocessing").then(op1).then(op2)
+processing = Graph("processing").then(op3).then(op4)
+postprocessing = Graph("postprocessing").then(op5).then(op6)
+
+# Visualize each separately
+preprocessing.visualize(filename="preprocessing.png")
+processing.visualize(filename="processing.png")
+postprocessing.visualize(filename="postprocessing.png")
+```
+
+COMMON ERROR PATTERNS
+------------------
+1. Missing Type Hints
+```
+TypeError: Function my_func must have type hints
+```
+Solution: Add type annotations to all parameters and the return value.
+
+2. List Processing Issues
+```
+TypeError: Operation expected single item but received list
+```
+Solution: Set auto_map=False if you want to process entire lists as single inputs.
+
+3. Operation Registration Errors
+```
+ValueError: Unknown evaluation types: ['custom_eval']
+```
+Solution: Register custom evaluators before using them in @eval decorator.
+
+4. Graph Topology Errors
+```
+ValueError: Cannot merge before branching
+```
+Solution: Ensure proper sequence of branch/merge operations in graph construction.
+
+5. OpenLIT Configuration Errors
+```
+ValueError: Missing OpenLIT configuration
+```
+Solution: Call set_openlit_config() before using OpenLIT evaluations. 

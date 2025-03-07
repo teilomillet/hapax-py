@@ -1,0 +1,268 @@
+HAPAX INTEGRATION GUIDE FOR AI ASSISTANTS
+====================================
+
+INTEGRATING HAPAX INTO EXISTING CODEBASES
+---------------------------------------
+This guide provides strategies for integrating hapax into existing Python applications.
+
+STEP 1: INSTALLATION AND SETUP
+----------------------------
+```python
+# Install the package
+!pip install hapax
+
+# Import core components
+from hapax import Graph, ops, eval
+from hapax import enable_gpu_monitoring, set_openlit_config
+
+# If using OpenLIT for evaluation
+set_openlit_config({
+    "provider": "openai",
+    "api_key": os.environ.get("OPENAI_API_KEY"),
+    "model": "gpt-4"
+})
+
+# If using GPU monitoring
+enable_gpu_monitoring(sample_rate_seconds=5)
+```
+
+STEP 2: CONVERTING EXISTING FUNCTIONS TO OPERATIONS
+------------------------------------------------
+Convert existing functions to hapax operations by adding the @ops decorator and proper type hints:
+
+BEFORE:
+```python
+def process_document(document):
+    """Clean and normalize document text."""
+    text = document.strip().lower()
+    text = re.sub(r'[^\w\s]', '', text)
+    return " ".join(text.split())
+```
+
+AFTER:
+```python
+from hapax import ops
+from typing import Dict, List, Any, Optional
+
+@ops(name="document_processor", tags=["preprocessing", "text_cleaning"])
+def process_document(document: str) -> str:
+    """Clean and normalize document text."""
+    text = document.strip().lower()
+    text = re.sub(r'[^\w\s]', '', text)
+    return " ".join(text.split())
+```
+
+STEP 3: ADAPTING CLASS METHODS FOR HAPAX
+--------------------------------------
+For object-oriented codebases, create operation wrappers around class methods:
+
+BEFORE:
+```python
+class TextProcessor:
+    def __init__(self, config):
+        self.config = config
+        
+    def clean_text(self, text):
+        # Implementation
+        return cleaned_text
+        
+    def analyze(self, text):
+        clean = self.clean_text(text)
+        # More processing
+        return results
+```
+
+AFTER:
+```python
+class TextProcessor:
+    def __init__(self, config):
+        self.config = config
+        
+    def clean_text(self, text):
+        # Original implementation
+        return cleaned_text
+        
+    def analyze(self, text):
+        # Original implementation
+        return results
+        
+# Create operation wrappers
+@ops(name="text_cleaner")
+def clean_text_op(text: str) -> str:
+    processor = TextProcessor(default_config)
+    return processor.clean_text(text)
+    
+@ops(name="text_analyzer")
+def analyze_text_op(text: str) -> Dict[str, Any]:
+    processor = TextProcessor(default_config)
+    return processor.analyze(text)
+
+# Create pipeline
+pipeline = Graph("text_processing").then(clean_text_op).then(analyze_text_op)
+```
+
+STEP 4: HANDLING STATEFUL PROCESSING
+----------------------------------
+For operations that need to maintain state:
+
+```python
+from functools import partial
+from hapax import ops, Graph
+
+class StatefulProcessor:
+    def __init__(self, config):
+        self.config = config
+        self.state = {}
+        
+    def process(self, input_data):
+        # Process using internal state
+        result = self._do_processing(input_data)
+        self.state['last_result'] = result
+        return result
+        
+    def _do_processing(self, input_data):
+        # Implementation
+        return processed
+
+# Create a configured instance
+processor = StatefulProcessor({"threshold": 0.5})
+
+# Create operation with bound instance method
+@ops(name="stateful_processing")
+def process_with_state(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    return processor.process(input_data)
+
+# Use in pipeline
+pipeline = Graph("stateful_pipeline").then(process_with_state)
+```
+
+STEP 5: INTEGRATING WITH ASYNC CODE
+---------------------------------
+For codebases using async/await patterns:
+
+```python
+import asyncio
+from hapax import ops, Graph
+
+async def fetch_data_async(url):
+    # Async implementation
+    return data
+
+# Sync wrapper for the async function
+@ops(name="data_fetcher")
+def fetch_data(url: str) -> Dict[str, Any]:
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(fetch_data_async(url))
+
+# Use in pipeline
+pipeline = Graph("data_pipeline").then(fetch_data).then(process_data)
+```
+
+STEP 6: INTEGRATING WITH WEB FRAMEWORKS
+-------------------------------------
+Example with Flask:
+
+```python
+from flask import Flask, request, jsonify
+from hapax import Graph, ops
+
+app = Flask(__name__)
+
+# Define operations
+@ops(name="analyze_text")
+def analyze_text(text: str) -> Dict[str, Any]:
+    # Implementation
+    return analysis_results
+
+# Create pipeline
+pipeline = Graph("analysis_pipeline").then(analyze_text)
+
+@app.route('/analyze', methods=['POST'])
+def analyze_endpoint():
+    text = request.json.get('text', '')
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+        
+    try:
+        results = pipeline.execute(text)
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+```
+
+STEP 7: INTEGRATING WITH DATA SCIENCE WORKFLOWS
+--------------------------------------------
+Example with pandas:
+
+```python
+import pandas as pd
+from hapax import ops, Graph
+from typing import List, Dict
+
+# Define operations for DataFrame processing
+@ops(name="preprocess_dataframe")
+def preprocess_df(df_json: str) -> List[Dict[str, Any]]:
+    df = pd.read_json(df_json)
+    # Preprocessing steps
+    processed_df = df.dropna().reset_index(drop=True)
+    return processed_df.to_dict('records')
+
+@ops(name="analyze_records")
+def analyze_records(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Analysis logic
+    return {"record_count": len(records), "analysis": "results"}
+
+# Create pipeline
+data_pipeline = Graph("data_science_pipeline").then(preprocess_df).then(analyze_records)
+
+# Use in notebook or script
+df = pd.DataFrame({"col1": [1, 2, None], "col2": ["a", "b", "c"]})
+results = data_pipeline.execute(df.to_json())
+```
+
+STEP 8: GRADUAL ADOPTION STRATEGY
+-------------------------------
+To gradually adopt hapax in a large codebase:
+
+1. Start with isolated components
+2. Create parallel implementations using hapax
+3. Use feature flags to switch between implementations
+4. Validate results match between old and new implementations
+5. Gradually expand scope of hapax operations
+
+```python
+# Feature flag for hapax adoption
+USE_HAPAX = os.environ.get("USE_HAPAX", "false").lower() == "true"
+
+def process_data(input_data):
+    if USE_HAPAX:
+        # Hapax implementation
+        return hapax_pipeline.execute(input_data)
+    else:
+        # Legacy implementation
+        return legacy_process_data(input_data)
+```
+
+STEP 9: MIGRATION CHECKLIST
+-------------------------
+✓ Identify functions suitable for conversion to operations
+✓ Add type hints to all functions being converted
+✓ Create test cases comparing original vs. hapax outputs
+✓ Design pipeline structure (sequential, branching, etc.)
+✓ Update error handling to match hapax patterns
+✓ Implement monitoring if required
+✓ Configure evaluations for LLM-based operations
+✓ Create visualization of final pipeline
+✓ Document integration decisions and patterns
+
+STEP 10: REFACTORING OPPORTUNITIES
+--------------------------------
+When integrating hapax, consider these refactoring opportunities:
+
+1. Split monolithic functions into smaller, focused operations
+2. Extract hardcoded parameters into configuration
+3. Add type safety to previously untyped code
+4. Improve error handling and recovery
+5. Add monitoring points for critical operations
+6. Implement parallel processing where appropriate
+7. Add evaluation for AI-generated content 

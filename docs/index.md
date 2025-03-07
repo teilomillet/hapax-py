@@ -2,6 +2,30 @@
 
 Hapax is a type-safe graph execution framework built on top of OpenLit. It allows you to build composable, monitored data processing pipelines with strong type checking and built-in observability.
 
+## Documentation Structure
+
+This documentation is organized into the following sections:
+
+1. **Getting Started**
+   - [Installation Guide](installation.md) - Requirements and installation options
+   - [Quick Start Guide](quickstart.md) - Get up and running in under 5 minutes
+   - [Comprehensive Guide](guide.md) - In-depth explanation of all key concepts
+   - [Examples](examples.md) - Code examples demonstrating various features
+
+2. **Core Features**
+   - [Graph API Reference](graph.md) - Complete reference for the Graph API and building pipelines
+   - [API Reference](api_reference.md) - Comprehensive reference for all Hapax classes and functions
+
+3. **Integrations**
+   - [OpenLit Basics](openlit.md) - Simple monitoring setup with OpenLit
+   - [Advanced OpenLit Integration](openlit_integration.md) - GPU monitoring, evaluations, and advanced features
+
+4. **Advanced Features**
+   - [Evaluation Decorators](evaluation_decorators.md) - Using evaluation decorators for content safety
+
+5. **Support and Troubleshooting**
+   - [Troubleshooting Guide](troubleshooting.md) - Solutions for common issues
+
 ## Core Concepts
 
 ### Operations

@@ -1,0 +1,167 @@
+HAPAX GRAPH BUILDING GUIDE FOR AI ASSISTANTS
+========================================
+
+GRAPH OVERVIEW
+------------
+Graphs in hapax represent the flow of data through multiple operations. They allow for complex topologies including sequential processing, branching for parallel execution, and merging of results.
+
+CREATING A GRAPH
+--------------
+```python
+from hapax import Graph
+
+# Create a named graph with optional description
+graph = Graph("my_pipeline", description="Processes text data")
+```
+
+SEQUENTIAL OPERATIONS WITH .then()
+-------------------------------
+The .then() method adds an operation to be executed after the previous operations.
+
+```python
+graph.then(clean_text)      # First operation
+     .then(tokenize)        # Second operation
+     .then(remove_stopwords)  # Third operation
+```
+
+PARALLEL EXECUTION WITH .branch()
+------------------------------
+The .branch() method allows multiple operations to be executed in parallel on the same input.
+
+```python
+graph.branch(
+    tokenize,             # Branch 1
+    sentiment_analysis,   # Branch 2
+    extract_entities      # Branch 3
+)
+```
+
+COMBINING RESULTS WITH .merge()
+----------------------------
+The .merge() method combines results from parallel branches into a single output.
+
+```python
+def combine_results(results: List[Any]) -> Dict[str, Any]:
+    tokens, sentiment, entities = results  # Unpack in order of branches
+    return {
+        "tokens": tokens,
+        "sentiment": sentiment,
+        "entities": entities
+    }
+
+graph.branch(
+    tokenize,
+    sentiment_analysis,
+    extract_entities
+).merge(combine_results)
+```
+
+CONDITIONAL PROCESSING WITH .condition()
+-------------------------------------
+The .condition() method allows for conditional execution based on a predicate function.
+
+```python
+def is_english(text: str) -> bool:
+    # Detect if text is English
+    return "english" in detect_language(text)
+
+graph.condition(
+    is_english,           # Predicate function
+    english_processor,    # If true
+    foreign_language_processor  # If false
+)
+```
+
+EXECUTING GRAPHS
+--------------
+Graphs are executed using the .execute() method, which takes the input data and returns the final result.
+
+```python
+result = graph.execute("This is my input text")
+```
+
+VISUALIZING GRAPHS
+----------------
+Graphs can be visualized using the .visualize() method.
+
+```python
+graph.visualize(filename="my_graph.png")  # Saves visualization to file
+# Or without filename to display in notebook
+graph.visualize()
+```
+
+GPU MONITORING
+------------
+To enable GPU monitoring during graph execution:
+
+```python
+graph.with_gpu_monitoring(
+    enabled=True,
+    sample_rate_seconds=5,
+    custom_config={"log_to_file": True, "log_path": "/tmp/gpu_logs.json"}
+)
+```
+
+EVALUATING RESULTS
+----------------
+For LLM-based operations, you can add automatic evaluation:
+
+```python
+graph.with_evaluation(
+    eval_type="hallucination",  # Type of evaluation
+    threshold=0.7,               # Minimum acceptable score (0-1)
+    provider="openai",           # LLM provider for evaluation
+    fail_on_evaluation=True      # Whether to raise exception on failure
+)
+```
+
+COMPLEX GRAPH EXAMPLE
+-------------------
+```python
+# Define operations with @ops
+@ops(name="clean_text")
+def clean_text(text: str) -> str:
+    # Implementation
+    return cleaned
+
+@ops(name="tokenize")
+def tokenize(text: str) -> List[str]:
+    # Implementation
+    return tokens
+
+@ops(name="sentiment")
+def analyze_sentiment(text: str) -> Dict[str, float]:
+    # Implementation
+    return sentiment_scores
+
+# Build graph
+pipeline = (
+    Graph("text_processor")
+    .then(clean_text)
+    .branch(
+        tokenize,
+        analyze_sentiment,
+        summarize
+    )
+    .merge(lambda results: {
+        "tokens": results[0],
+        "sentiment": results[1],
+        "summary": results[2]
+    })
+    .then(store_results)
+    .with_gpu_monitoring()
+)
+
+# Execute
+results = pipeline.execute("Input text here")
+```
+
+BEST PRACTICES FOR GRAPHS
+-----------------------
+1. Give meaningful names to graphs and operations
+2. Use branch() for independent parallel operations
+3. Ensure merge functions properly handle branch outputs
+4. Add visualization for complex graphs
+5. Enable monitoring for resource-intensive operations
+6. Handle errors at both operation and graph levels
+7. Keep graphs focused on a specific pipeline function 
