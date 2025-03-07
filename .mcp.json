@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "hapax-docs": {
+      "command": "/Users/teilo.millet/Code/hapax-py/.venv/bin/python3",
+      "args": [
+        "-m",
+        "hapax_docs.server"
+      ],
+      "transport": "stdio",
+      "name": "Hapax Documentation Assistant",
+      "version": "0.1.0",
+      "description": "Documentation assistant for the Hapax framework"
+    }
+  }
+}
