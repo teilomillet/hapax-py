@@ -25,12 +25,19 @@ def register_evaluator(name: str, evaluator_cls: type) -> None:
 EVAL_CACHE: Dict[str, Dict[str, float]] = {}
 
 @dataclass
-class EvalConfig:
-    """Configuration for evaluation decorators."""
-    evals: List[str] = field(default_factory=lambda: ["all"])
-    threshold: float = 0.5
+class BaseConfig:
+    """Base configuration for all decorators."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    openlit_config: Dict[str, Any] = field(default_factory=dict)
+    config: Dict[str, Any] = field(default_factory=dict)  # Generic configuration (replaces openlit_config)
+
+@dataclass
+class EvalConfig(BaseConfig):
+    """Configuration for evaluation decorators."""
+    evaluators: List[str] = field(default_factory=lambda: ["all"])  # Renamed from evals for clarity
+    threshold: float = 0.5
     cache_results: bool = True
     use_openlit: bool = False
     openlit_provider: Optional[str] = None
@@ -39,11 +46,11 @@ class EvalConfig:
         """Validate configuration after initialization."""
         if not 0 <= self.threshold <= 1:
             raise ValueError("Threshold must be between 0 and 1")
-        if not self.evals:
+        if not self.evaluators:
             raise ValueError("Must specify at least one evaluation type")
         if not self.use_openlit:
             # Only validate registered evaluators if not using OpenLIT
-            unknown_evals = set(self.evals) - set(EVALUATOR_REGISTRY.keys()) - {"all"}
+            unknown_evals = set(self.evaluators) - set(EVALUATOR_REGISTRY.keys()) - {"all"}
             if unknown_evals:
                 raise ValueError(f"Unknown evaluation types: {unknown_evals}")
 
@@ -57,10 +64,11 @@ def _get_cache_key(func: Callable, args: tuple, kwargs: dict, eval_type: str) ->
     return hashlib.sha256(key_str.encode()).hexdigest()
 
 def eval(
-    evals: Optional[List[str]] = None,
+    name: Optional[str] = None,  # Added for consistency with other decorators
+    evaluators: Optional[List[str]] = None,  # Renamed from evals for clarity
     threshold: float = 0.5,
     metadata: Optional[Dict[str, Any]] = None,
-    openlit_config: Optional[Dict[str, Any]] = None,
+    config: Optional[Dict[str, Any]] = None,  # Renamed from openlit_config
     cache_results: bool = True,
     use_openlit: bool = False,
     openlit_provider: Optional[str] = None,
@@ -69,16 +77,17 @@ def eval(
     Decorator to evaluate function outputs using evaluations.
     
     Example:
-        @eval(evals=["hallucination", "bias"], threshold=0.7)
+        @eval(name="response_validator", evaluators=["hallucination", "bias"], threshold=0.7)
         def generate_response(prompt: str) -> str:
             return "Generated response..."
             
     Args:
-        evals: List of evaluations to run. Options are registered evaluator names
-              or OpenLIT evaluations if use_openlit=True
+        name: Optional name for this evaluation
+        evaluators: List of evaluations to run. Options are registered evaluator names
+                  or OpenLIT evaluations if use_openlit=True
         threshold: Threshold score for evaluations (0.0 to 1.0)
         metadata: Additional metadata for evaluations
-        openlit_config: Configuration for OpenLIT evaluations
+        config: Configuration for evaluations (replaces openlit_config)
         cache_results: Whether to cache evaluation results
         use_openlit: Whether to use OpenLIT evaluations instead of registered evaluators
         openlit_provider: LLM provider for OpenLIT evaluations ("openai" or "anthropic")
@@ -94,11 +103,14 @@ def eval(
         if return_type is not str:
             raise TypeError(f"Evaluation only supports string outputs, got {return_type}")
         
-        config = EvalConfig(
-            evals=evals or ["all"],
+        eval_name = name or f"{func.__name__}_eval"  # Create a default name if none provided
+        
+        eval_config = EvalConfig(
+            name=eval_name,
+            evaluators=evaluators or ["all"],
             threshold=threshold,
             metadata=metadata or {},
-            openlit_config=openlit_config or {},
+            config=config or {},  # Use the renamed parameter
             cache_results=cache_results,
             use_openlit=use_openlit,
             openlit_provider=openlit_provider,
@@ -116,7 +128,7 @@ def eval(
                 )
             
             # Use OpenLIT evaluations if requested
-            if config.use_openlit:
+            if eval_config.use_openlit:
                 try:
                     # Import necessary OpenLIT evaluators here to avoid circular imports
                     from hapax.evaluations import (
@@ -135,13 +147,13 @@ def eval(
                     }
                     
                     # Determine which OpenLIT evaluations to run
-                    all_evals = set(config.evals)
+                    all_evals = set(eval_config.evaluators)
                     
                     # Context from metadata if available
-                    contexts = config.metadata.get("contexts", []) if config.metadata else []
+                    contexts = eval_config.metadata.get("contexts", []) if eval_config.metadata else []
                     
                     # Get the prompt from metadata or first argument if it's a string
-                    prompt = config.metadata.get("prompt", "")
+                    prompt = eval_config.metadata.get("prompt", "")
                     if not prompt and args and isinstance(args[0], str):
                         prompt = args[0]
                     
@@ -151,10 +163,10 @@ def eval(
                         if eval_type in eval_map:
                             evaluator_cls = eval_map[eval_type]
                             evaluator = evaluator_cls(
-                                provider=config.openlit_provider or "openai",
-                                threshold=config.threshold,
+                                provider=eval_config.openlit_provider or "openai",
+                                threshold=eval_config.threshold,
                                 collect_metrics=True,
-                                **(config.openlit_config or {})
+                                **(eval_config.config or {})
                             )
                             
                             eval_result = evaluator.evaluate(
@@ -184,9 +196,9 @@ def eval(
             else:
                 # Original evaluation code for registered evaluators
                 eval_results = {}
-                for eval_type in config.evals:
+                for eval_type in eval_config.evaluators:
                     # Check cache first
-                    if config.cache_results:
+                    if eval_config.cache_results:
                         cache_key = _get_cache_key(func, args, kwargs, eval_type)
                         if cache_key in EVAL_CACHE:
                             eval_results.update(EVAL_CACHE[cache_key])
@@ -194,30 +206,30 @@ def eval(
                     
                     # Get evaluator from registry
                     if eval_type in EVALUATOR_REGISTRY:
-                        evaluator = EVALUATOR_REGISTRY[eval_type](**config.openlit_config)
+                        evaluator = EVALUATOR_REGISTRY[eval_type](**eval_config.config)
                         score = evaluator.evaluate(result)
                         eval_results[eval_type] = score
                         
                         # Cache result
-                        if config.cache_results:
+                        if eval_config.cache_results:
                             EVAL_CACHE[cache_key] = {eval_type: score}
                     
                     elif eval_type == "all":
                         # Run all registered evaluators
                         for name, evaluator_cls in EVALUATOR_REGISTRY.items():
-                            evaluator = evaluator_cls(**config.openlit_config)
+                            evaluator = evaluator_cls(**eval_config.config)
                             score = evaluator.evaluate(result)
                             eval_results[name] = score
                             
                             # Cache result
-                            if config.cache_results:
+                            if eval_config.cache_results:
                                 cache_key = _get_cache_key(func, args, kwargs, name)
                                 EVAL_CACHE[cache_key] = {name: score}
                 
                 # Check if any evaluation failed with original method
                 failed_evals = [
                     name for name, score in eval_results.items()
-                    if score > config.threshold
+                    if score > eval_config.threshold
                 ]
                 
                 if failed_evals:
@@ -227,6 +239,9 @@ def eval(
                     )
             
             return result
+        
+        # Attach configuration to wrapper for introspection
+        wrapper._eval_config = eval_config
         
         return wrapper
     
@@ -263,7 +278,7 @@ def ops(
     description: Optional[str] = None,
     tags: Optional[List[str]] = None,
     metadata: Optional[Dict[str, Any]] = None,
-    openlit_config: Optional[Dict[str, Any]] = None,
+    config: Optional[Dict[str, Any]] = None,  # Renamed from openlit_config
 ) -> Callable:
     """
     Decorator to create an Operation from a function.
@@ -274,7 +289,7 @@ def ops(
         def tokenize(text: str) -> List[str]:
             return text.split()
     """
-    def decorator(func: Callable[[T], U]) -> Operation[T, U]:
+    def decorator(func: Callable[[T], U]) -> Callable[[T], U]:
         # Validate type hints at import time
         hints = get_type_hints(func)
         if not hints:
@@ -290,42 +305,78 @@ def ops(
             raise TypeError(f"Function {func.__name__} must specify return type annotation")
             
         op_name = name or func.__name__
-        config = OpConfig(
+        op_config = OpConfig(
             name=op_name,
             description=description or func.__doc__,
             tags=tags or [],
             metadata=metadata or {},
-            openlit_config=openlit_config,
+            config=config or {},  # Use the renamed parameter
         )
         
         operation = Operation(
             func=func,
-            config=config,
+            config=op_config,
         )
         
         # Store validated type information
         operation._input_type = params[0][1]  # First parameter type
         operation._output_type = hints["return"]
         
-        return operation
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Operation object already handles validation
+            return operation(*args, **kwargs)
+            
+        # Attach operation to wrapper for introspection
+        wrapper._operation = operation
+        
+        # Add support for the >> operator directly on the wrapper function
+        def wrapper_rshift(other):
+            if hasattr(other, '_operation'):
+                # If other is a wrapped operation, use its operation
+                other_op = other._operation
+            else:
+                # Otherwise assume it's an operation directly
+                other_op = other
+            
+            # Create the composed operation
+            composed_op = operation >> other_op
+            
+            # Return the composed operation directly
+            return composed_op
+            
+        # Attach the >> operator to the wrapper
+        wrapper.__rshift__ = wrapper_rshift
+        
+        # Return the wrapper function directly
+        return wrapper
     
     return decorator
 
 def graph(
     name: Optional[str] = None,
     description: Optional[str] = None,
+    tags: Optional[List[str]] = None,  # Added for consistency with other decorators
     metadata: Optional[Dict[str, Any]] = None,
+    config: Optional[Dict[str, Any]] = None,  # Added for consistency with other decorators
 ) -> Callable:
     """
     Decorator to create a Graph from a function that composes operations.
     
     Example:
-        @graph(name="text_processing")
+        @graph(name="text_processing", tags=["pipeline"])
         def process_text(text: str) -> List[str]:
             return tokenize >> normalize >> filter_stops
     """
-    def decorator(func: Callable) -> Operation:
+    def decorator(func: Callable) -> Callable:
         graph_name = name or func.__name__
+        graph_config = BaseConfig(
+            name=graph_name,
+            description=description or func.__doc__,
+            tags=tags or [],
+            metadata=metadata or {},
+            config=config or {},
+        )
         
         # The decorated function should return a composed operation
         @wraps(func)
@@ -338,6 +389,9 @@ def graph(
                 )
             return result
         
-        return decorator
+        # Attach config to wrapper for introspection
+        wrapper._graph_config = graph_config
+        
+        return wrapper
     
     return decorator

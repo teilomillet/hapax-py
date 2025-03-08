@@ -14,7 +14,7 @@ from hapax.evaluations import (
     ToxicityEvaluator,
     AllEvaluator
 )
-from hapax.core.decorators import eval, EvaluationError
+from hapax.core.decorators import eval, EvaluationError, BaseConfig, EvalConfig, ops
 
 
 class TestOpenLITEvaluator(unittest.TestCase):
@@ -302,6 +302,154 @@ class TestOtherEvaluators(unittest.TestCase):
             self.assertEqual(result["evaluation"], "toxicity")
 
 
+class TestConfigClasses(unittest.TestCase):
+    """Test the configuration classes for decorators."""
+    
+    def test_base_config_defaults(self):
+        """Test BaseConfig initialization with default values."""
+        config = BaseConfig()
+        self.assertIsNone(config.name)
+        self.assertIsNone(config.description)
+        self.assertEqual(config.tags, [])
+        self.assertEqual(config.metadata, {})
+        self.assertEqual(config.config, {})
+    
+    def test_base_config_custom_values(self):
+        """Test BaseConfig initialization with custom values."""
+        config = BaseConfig(
+            name="test_config",
+            description="Test configuration",
+            tags=["test", "config"],
+            metadata={"version": "1.0.0"},
+            config={"trace_content": True}
+        )
+        self.assertEqual(config.name, "test_config")
+        self.assertEqual(config.description, "Test configuration")
+        self.assertEqual(config.tags, ["test", "config"])
+        self.assertEqual(config.metadata, {"version": "1.0.0"})
+        self.assertEqual(config.config, {"trace_content": True})
+    
+    def test_eval_config_inheritance(self):
+        """Test EvalConfig inherits properly from BaseConfig."""
+        config = EvalConfig(
+            name="test_eval",
+            description="Test evaluation config",
+            tags=["test", "eval"],
+            metadata={"source": "test"},
+            config={"model": "gpt-4"},
+            evaluators=["hallucination", "bias"],
+            threshold=0.6,
+            cache_results=False,
+            use_openlit=True,
+            openlit_provider="anthropic"
+        )
+        
+        # Test inherited fields from BaseConfig
+        self.assertEqual(config.name, "test_eval")
+        self.assertEqual(config.description, "Test evaluation config")
+        self.assertEqual(config.tags, ["test", "eval"])
+        self.assertEqual(config.metadata, {"source": "test"})
+        self.assertEqual(config.config, {"model": "gpt-4"})
+        
+        # Test EvalConfig specific fields
+        self.assertEqual(config.evaluators, ["hallucination", "bias"])
+        self.assertEqual(config.threshold, 0.6)
+        self.assertFalse(config.cache_results)
+        self.assertTrue(config.use_openlit)
+        self.assertEqual(config.openlit_provider, "anthropic")
+    
+    def test_eval_config_validation(self):
+        """Test EvalConfig validation in __post_init__."""
+        # Test valid threshold
+        config = EvalConfig(threshold=0.5)
+        self.assertEqual(config.threshold, 0.5)
+        
+        # Test invalid threshold (lower bound)
+        with self.assertRaises(ValueError):
+            EvalConfig(threshold=-0.1)
+        
+        # Test invalid threshold (upper bound)
+        with self.assertRaises(ValueError):
+            EvalConfig(threshold=1.1)
+        
+        # Test empty evaluators list
+        with self.assertRaises(ValueError):
+            EvalConfig(evaluators=[])
+
+class TestOpsDecorator(unittest.TestCase):
+    """Test the @ops decorator with the new config parameter."""
+    
+    def test_ops_with_config(self):
+        """Test @ops decorator with the config parameter."""
+        @ops(
+            name="test_op",
+            tags=["test", "operation"],
+            config={"trace_content": True}
+        )
+        def sample_operation(text: str) -> str:
+            return text.upper()
+        
+        # Check the operation's wrapper 
+        self.assertTrue(hasattr(sample_operation, '_operation'))
+        operation = sample_operation._operation
+        
+        # Verify config was set correctly
+        self.assertEqual(operation.config.name, "test_op")
+        self.assertEqual(operation.config.tags, ["test", "operation"])
+        self.assertEqual(operation.config.config, {"trace_content": True})
+        
+        # Test functionality
+        result = sample_operation("test")
+        self.assertEqual(result, "TEST")
+
+
+class TestGraphDecorator(unittest.TestCase):
+    """Test the @graph decorator with the new parameters."""
+    
+    def test_graph_with_new_parameters(self):
+        """Test @graph decorator with tags and config parameters."""
+        from hapax.core.decorators import graph
+        from hapax.core.models import Operation
+        
+        @ops(name="op1")
+        def op1(x: str) -> str:
+            return x + "_op1"
+            
+        @ops(name="op2")
+        def op2(x: str) -> str:
+            return x + "_op2"
+        
+        # Get the underlying Operation objects
+        op1_operation = op1._operation
+        op2_operation = op2._operation
+        
+        @graph(
+            name="test_graph",
+            description="A test graph",
+            tags=["test", "pipeline"],
+            metadata={"version": "1.0"},
+            config={"trace_content": True}
+        )
+        def simple_graph():
+            # Use the Operations directly for composition
+            return op1_operation >> op2_operation
+        
+        # Check graph configuration
+        self.assertTrue(hasattr(simple_graph, '_graph_config'))
+        graph_config = simple_graph._graph_config
+        
+        # Verify config was set correctly
+        self.assertEqual(graph_config.name, "test_graph")
+        self.assertEqual(graph_config.description, "A test graph")
+        self.assertEqual(graph_config.tags, ["test", "pipeline"])
+        self.assertEqual(graph_config.metadata, {"version": "1.0"})
+        self.assertEqual(graph_config.config, {"trace_content": True})
+        
+        # Test functionality
+        result = simple_graph()("input")
+        self.assertEqual(result, "input_op1_op2")
+
+
 @patch('hapax.evaluations.HallucinationEvaluator')
 class TestEvalDecorator(unittest.TestCase):
     """Test the @eval decorator with OpenLIT integration."""
@@ -315,7 +463,8 @@ class TestEvalDecorator(unittest.TestCase):
         
         # Define a function with the @eval decorator
         @eval(
-            evals=["hallucination"],
+            name="fact_validator",
+            evaluators=["hallucination"],
             threshold=0.7,
             use_openlit=True,
             openlit_provider="openai",
@@ -357,7 +506,8 @@ class TestEvalDecorator(unittest.TestCase):
         
         # Define a function with the @eval decorator
         @eval(
-            evals=["hallucination"],
+            name="wrong_fact_detector",
+            evaluators=["hallucination"],
             threshold=0.7,
             use_openlit=True,
             openlit_provider="openai"

@@ -21,7 +21,11 @@ client = OpenAI()
 Sentiment = Dict[str, Union[float, Dict[str, float]]]
 Entity = Dict[str, str]
 
-@ops(name="sentiment_analysis")
+@ops(
+    name="sentiment_analysis",
+    tags=["llm", "analysis"],
+    config={"trace_content": True}  # Using config instead of openlit_config
+)
 def analyze_sentiment(text: str) -> Sentiment:
     """Analyze text sentiment using LLM."""
     response = client.chat.completions.create(
@@ -53,10 +57,18 @@ def analyze_sentiment(text: str) -> Sentiment:
                 "surprise": float(data.get("emotions", {}).get("surprise", 0.0))
             }
         }
-    except Exception:
+    except (ValueError, AttributeError, KeyError) as e:
+        # Fallback for parsing errors
         return {
-            "positive": 0.0, "negative": 0.0, "neutral": 1.0,
-            "emotions": {"joy": 0.0, "sadness": 0.0, "anger": 0.0, "surprise": 0.0}
+            "positive": 0.0,
+            "negative": 0.0,
+            "neutral": 1.0,
+            "emotions": {
+                "joy": 0.0,
+                "sadness": 0.0,
+                "anger": 0.0,
+                "surprise": 0.0
+            }
         }
 
 @ops(name="entity_extraction")

@@ -33,7 +33,7 @@ class OpConfig(BaseModel):
                 "description": "Split text into tokens",
                 "tags": ["nlp", "preprocessing"],
                 "metadata": {"version": "1.0.0"},
-                "openlit_config": {
+                "config": {
                     "otlp_endpoint": "http://localhost:4318",
                     "environment": "development"
                 }
@@ -45,17 +45,21 @@ class OpConfig(BaseModel):
     description: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    openlit_config: Optional[Dict[str, Any]] = Field(
+    config: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="OpenLit configuration options",
-        example={
-            "otlp_endpoint": "http://localhost:4318",
-            "environment": "development",
-            "application_name": "my_app",
-            "trace_content": True,
-            "disable_metrics": False
-        }
+        description="Generic configuration options for the operation",
     )
+
+    def get_effective_config(self) -> Dict[str, Any]:
+        """
+        Get the effective configuration, combining operation-specific config
+        with the global OpenLit config if available.
+        """
+        global_config = get_openlit_config() or {}
+        op_config = self.config or {}
+        
+        # Operation config takes precedence over global config
+        return {**global_config, **op_config}
 
 def _extract_type_hints(func: Callable) -> tuple[Any, Any]:
     """Extract input and output type hints from a function."""
@@ -133,7 +137,7 @@ def _check_type(value: Any, expected_type: Any) -> bool:
         return True
 
 class Operation(BaseOperation[T, U]):
-    """An operation that transforms input type T to output type U."""
+    """An operation that transforms input data of type T to output data of type U."""
     
     def __init__(
         self,
@@ -141,40 +145,27 @@ class Operation(BaseOperation[T, U]):
         config: Optional[OpConfig] = None,
         auto_map: bool = True
     ):
-        """Initialize the operation.
+        """
+        Initialize an Operation.
         
         Args:
-            func: The function to wrap
+            func: The function to execute
             config: Operation configuration
-            auto_map: If True, automatically map over lists
+            auto_map: Whether to automatically map over list inputs
         """
-        super().__init__(config.name if config else "unnamed")
         self.func = func
-        self.config = config
-        self._auto_map = auto_map
+        self.config = config or OpConfig(name=func.__name__)
+        self.auto_map = auto_map
         
-        # Extract and validate types at definition time
-        hints = get_type_hints(func)
-        if not hints:
-            raise TypeError(f"Function {func.__name__} must have type hints")
+        # Extract type hints from function signature
+        self._input_type, self._output_type = _extract_type_hints(func)
         
-        # Get and validate input type
-        params = list(signature(func).parameters.values())
-        if not params:
-            raise TypeError(f"Function {func.__name__} must have at least one parameter")
+        # Create tracer for telemetry
+        self._tracer = trace.get_tracer(f"hapax.operation.{self.config.name}")
         
-        first_param = params[0]
-        if first_param.annotation == inspect.Parameter.empty:
-            raise TypeError(f"First parameter of {func.__name__} must have a type annotation")
-        self._input_type = first_param.annotation
+        # For debugging and visualization
+        self.__name__ = self.config.name
         
-        # Get and validate return type
-        if 'return' not in hints:
-            raise TypeError(f"Function {func.__name__} must have a return type annotation")
-        self._output_type = hints['return']
-        if self._output_type == inspect.Parameter.empty:
-            raise TypeError(f"Function {func.__name__} must have a return type annotation")
-            
         # Validate type compatibility for composition
         if hasattr(func, '_input_type') and hasattr(func, '_output_type'):
             if not self._is_type_compatible(self._output_type, func._input_type):
@@ -209,27 +200,48 @@ class Operation(BaseOperation[T, U]):
 
     def __call__(self, input_data: T) -> U:
         """Execute the operation on input data."""
-        # Handle list inputs when auto_map is True
-        if self._auto_map and isinstance(input_data, list):
-            if get_origin(self._input_type) is not list:
-                # If input is a list but we expect a single item, map over the list
-                return [self.func(item) for item in input_data]  # type: ignore
+        # Get effective configuration
+        effective_config = self.config.get_effective_config()
         
-        if not _check_type(input_data, self._input_type):
-            raise TypeError(
-                f"Input type mismatch in {self.config.name if self.config else 'unnamed'}. "
-                f"Expected {self._input_type}, got {type(input_data)}"
-            )
-
-        result = self.func(input_data)
-
-        if not _check_type(result, self._output_type):
-            raise TypeError(
-                f"Output type mismatch in {self.config.name if self.config else 'unnamed'}. "
-                f"Expected {self._output_type}, got {type(result)}"
-            )
-
-        return result
+        # Start a new span for tracing
+        with self._tracer.start_as_current_span(
+            f"operation.{self.config.name}",
+            attributes={
+                "hapax.operation.name": self.config.name,
+                "hapax.operation.tags": ",".join(self.config.tags),
+                "hapax.operation.trace_content": effective_config.get("trace_content", False),
+            }
+        ) as span:
+            try:
+                # Handle automatic mapping over lists if enabled
+                if self.auto_map and isinstance(input_data, list):
+                    span.set_attribute("hapax.operation.auto_map", True)
+                    span.set_attribute("hapax.operation.input_length", len(input_data))
+                    
+                    # Map the function over each element
+                    result = [self.func(item) for item in input_data]
+                    
+                    span.set_attribute("hapax.operation.output_length", len(result))
+                    span.set_status(Status(StatusCode.OK))
+                    return result
+                
+                # Trace content if configured
+                if effective_config.get("trace_content", False):
+                    span.set_attribute("hapax.operation.input", str(input_data)[:1000])  # Truncate for safety
+                
+                # Execute the function
+                result = self.func(input_data)
+                
+                # Trace output if configured
+                if effective_config.get("trace_content", False):
+                    span.set_attribute("hapax.operation.output", str(result)[:1000])  # Truncate for safety
+                
+                span.set_status(Status(StatusCode.OK))
+                return result
+            except Exception as e:
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+                raise
 
     def compose(self, other: BaseOperation[U, Any]) -> BaseOperation[T, Any]:
         """Compose this operation with another operation."""
@@ -239,7 +251,7 @@ class Operation(BaseOperation[T, U]):
         return Operation(
             composed_func,
             config=other.config,
-            auto_map=self._auto_map
+            auto_map=self.auto_map
         )
 
     def __rshift__(self, other: BaseOperation[U, Any]) -> BaseOperation[T, Any]:
@@ -362,7 +374,7 @@ def ops(
             description=func_description,
             tags=tags or [],
             metadata=metadata or {},
-            openlit_config=get_openlit_config()  # Use global OpenLit config
+            config=get_openlit_config()  # Use global OpenLit config
         )
         return Operation(
             func=func,

@@ -19,16 +19,21 @@ class CustomEvaluator:
 register_evaluator("length", CustomEvaluator)
 
 # Basic usage with built-in evaluators
-@eval(evals=["hallucination"], threshold=0.7)
+@eval(
+    name="hallucination_check",
+    evaluators=["hallucination"],
+    threshold=0.7
+)
 def simple_generation(prompt: str) -> str:
     """Generate a simple response with hallucination check."""
     return f"The answer to {prompt} is always 42."
 
 # Using multiple evaluations with caching
 @eval(
-    evals=["bias", "toxicity"],
+    name="safety_check",
+    evaluators=["bias", "toxicity"],
     threshold=0.5,
-    cache_results=True  # Enable caching
+    cache_results=True
 )
 def comprehensive_check(prompt: str) -> str:
     """Generate text with multiple safety checks."""
@@ -36,16 +41,21 @@ def comprehensive_check(prompt: str) -> str:
 
 # Using custom evaluator with configuration
 @eval(
-    evals=["length"],
-    threshold=0.3,  # Fail if text is >30% of max_length
-    openlit_config={"max_length": 50}  # Configure CustomEvaluator
+    name="length_control",
+    evaluators=["length"],
+    threshold=0.3,
+    config={"max_length": 50}
 )
 def length_controlled(prompt: str) -> str:
     """Generate text with length control."""
     return f"Short response to: {prompt}"
 
 # Using all available evaluators
-@eval(evals=["all"], threshold=0.6)
+@eval(
+    name="maximum_safety_check",
+    evaluators=["all"],
+    threshold=0.6
+)
 def maximum_safety(prompt: str) -> str:
     """Run all registered evaluators (built-in and custom)."""
     return f"Super safe response to: {prompt}"

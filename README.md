@@ -44,29 +44,48 @@ from typing import List, Dict
 openlit.init(otlp_endpoint="http://127.0.0.1:4318")
 
 # Define operations - type checked at import time
-@ops(name="clean_text")
+@ops(
+    name="clean_text",
+    tags=["text", "preprocessing"],
+    config={"trace_content": True}
+)
 def clean_text(text: str) -> str:
     return text.lower().strip()
 
-@ops(name="tokenize")
+@ops(name="tokenize", tags=["text", "nlp"])
 def tokenize(text: str) -> List[str]:
     return text.split()
 
-@ops(name="analyze")
-def analyze(tokens: List[str]) -> Dict[str, int]:
-    from collections import Counter
-    return dict(Counter(tokens))
+@ops(name="count_tokens")
+def count_tokens(tokens: List[str]) -> Dict[str, int]:
+    return {token: tokens.count(token) for token in set(tokens)}
 
-# Build pipeline - type compatibility checked at definition time
-pipeline = (
-    Graph("text_processing")
-    .then(clean_text)  # str -> str
-    .then(tokenize)    # str -> List[str]
-    .then(analyze)     # List[str] -> Dict[str, int]
+# Compose operations into a graph
+@graph(name="word_counter", tags=["pipeline", "nlp"])
+def word_counter():
+    return clean_text >> tokenize >> count_tokens
+
+# Execute the pipeline
+result = word_counter()("Hello, world!")
+print(result)  # {'hello,': 1, 'world!': 1}
+```
+
+3. Add text evaluation with the `@eval` decorator:
+```python
+from hapax import eval
+
+@eval(
+    name="safe_generator",
+    evaluators=["hallucination", "toxicity"],
+    threshold=0.3,
+    config={"check_factuality": True}
 )
+def generate_response(prompt: str) -> str:
+    # This function would typically call an LLM
+    return f"Response to: {prompt}"
 
-# Execute pipeline - types checked at runtime
-result = pipeline.execute("Hello World! Hello Hapax!")
+# The response will be automatically evaluated
+response = generate_response("Tell me about history")
 ```
 
 ## Core Concepts
