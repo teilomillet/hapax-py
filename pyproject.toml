@@ -1,6 +1,6 @@
 [project]
 name = "hapax"
-version = "0.1.5"
+version = "0.1.6"
 description = "A type-safe graph execution framework built on top of OpenLit for LLM pipelines"
 readme = "README.md"
 requires-python = ">=3.11"
