@@ -89,6 +89,18 @@ def generate_response(prompt: str) -> str:
 response = generate_response("Tell me about history")
 ```
 
+4. See Hapax in Action:
+Check out our demo comparing standard Python implementation with Hapax:
+```bash
+python examples/hapax_demo.py
+```
+This demo showcases Hapax's key advantages:
+- Multi-stage type checking
+- Declarative graph-based pipelines 
+- Automatic monitoring integration
+- Centralized error handling
+- Built-in evaluation framework
+
 ## Core Concepts
 
 ### 1. Operations
