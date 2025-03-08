@@ -403,13 +403,12 @@ class TestOpsDecorator(unittest.TestCase):
         self.assertEqual(result, "TEST")
 
 
-class TestGraphDecorator(unittest.TestCase):
-    """Test the @graph decorator with the new parameters."""
+class TestGraphMethods(unittest.TestCase):
+    """Test the Graph class methods for building pipelines."""
     
-    def test_graph_with_new_parameters(self):
-        """Test @graph decorator with tags and config parameters."""
-        from hapax.core.decorators import graph
-        from hapax.core.models import Operation
+    def test_graph_then_method(self):
+        """Test building a pipeline using Graph.then()."""
+        from hapax.core.graph import Graph
         
         @ops(name="op1")
         def op1(x: str) -> str:
@@ -419,34 +418,38 @@ class TestGraphDecorator(unittest.TestCase):
         def op2(x: str) -> str:
             return x + "_op2"
         
-        # Get the underlying Operation objects
-        op1_operation = op1._operation
-        op2_operation = op2._operation
+        # Create a graph with the then() method
+        graph = Graph("test_graph", description="A test graph")
+        graph.then(op1)
+        graph.then(op2)
         
-        @graph(
-            name="test_graph",
-            description="A test graph",
-            tags=["test", "pipeline"],
-            metadata={"version": "1.0"},
-            config={"trace_content": True}
-        )
-        def simple_graph():
-            # Use the Operations directly for composition
-            return op1_operation >> op2_operation
-        
-        # Check graph configuration
-        self.assertTrue(hasattr(simple_graph, '_graph_config'))
-        graph_config = simple_graph._graph_config
-        
-        # Verify config was set correctly
-        self.assertEqual(graph_config.name, "test_graph")
-        self.assertEqual(graph_config.description, "A test graph")
-        self.assertEqual(graph_config.tags, ["test", "pipeline"])
-        self.assertEqual(graph_config.metadata, {"version": "1.0"})
-        self.assertEqual(graph_config.config, {"trace_content": True})
+        # Verify graph configuration
+        self.assertEqual(graph.name, "test_graph")
+        self.assertEqual(graph.description, "A test graph")
         
         # Test functionality
-        result = simple_graph()("input")
+        result = graph.execute("input")
+        self.assertEqual(result, "input_op1_op2")
+    
+    def test_graph_with_chained_methods(self):
+        """Test building a pipeline using chained Graph methods."""
+        from hapax.core.graph import Graph
+        
+        @ops(name="op1")
+        def op1(x: str) -> str:
+            return x + "_op1"
+            
+        @ops(name="op2")
+        def op2(x: str) -> str:
+            return x + "_op2"
+        
+        # Create a graph with chained methods
+        graph = (Graph("chained_graph")
+                 .then(op1)
+                 .then(op2))
+        
+        # Test functionality
+        result = graph.execute("input")
         self.assertEqual(result, "input_op1_op2")
 
 

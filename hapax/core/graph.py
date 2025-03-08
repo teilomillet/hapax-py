@@ -13,24 +13,34 @@ V = TypeVar('V')
 logger = logging.getLogger(__name__)
 
 class Graph(Generic[T, U]):
-    """A fluent API for building computation graphs.
+    """
+    Represents a computation pipeline as a composition of operations.
     
-    Example:
-        graph = (
-            Graph("text_processing")
-            .then(clean_text)
-            .branch(
-                tokenize >> normalize,
-                sentiment_analysis,
-                language_detection
-            )
-            .merge(lambda results: {
-                "tokens": results[0],
-                "sentiment": results[1],
-                "language": results[2]
-            })
-            .then(store_results)
-        )
+    The Graph class is the primary way to build both simple linear pipelines and 
+    complex workflows with branching, merging, and conditionals. All type checking
+    is performed at graph definition time.
+    
+    For simple linear pipelines:
+        pipeline = Graph("text_processor")
+        pipeline.then(clean_text)
+                .then(tokenize)
+                .then(analyze)
+    
+    For complex workflows with branching:
+        pipeline = Graph("parallel_processor")
+        pipeline.then(preprocess)
+                .branch(
+                    summarize,
+                    extract_entities,
+                    analyze_sentiment
+                )
+                .merge(combine_results)
+    
+    To execute a pipeline:
+        result = pipeline.execute(input_data)
+    
+    You can also visualize the pipeline structure:
+        pipeline.visualize()
     """
     
     def __init__(self, name: str, description: Optional[str] = None):
@@ -113,10 +123,24 @@ class Graph(Generic[T, U]):
         return self
     
     def then(self, operation: Union[BaseOperation[T, U], Callable[[T], U]]) -> 'Graph[T, U]':
-        """Add an operation to the graph.
+        """
+        Add an operation to the graph.
+        
+        This is the primary method for building pipelines. Use this method to add
+        operations sequentially to create linear pipelines, or before branch/merge
+        operations to create more complex workflows.
+        
+        The method returns the graph itself to support method chaining:
+            pipeline = Graph("text_processor")
+            pipeline.then(clean_text)
+                    .then(tokenize)
+                    .then(analyze)
         
         Args:
             operation: Operation to add, can be a BaseOperation or a function
+            
+        Returns:
+            The graph instance for method chaining
         """
         if not isinstance(operation, BaseOperation):
             # If it's a function, wrap it in an Operation

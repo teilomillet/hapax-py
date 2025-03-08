@@ -1,6 +1,7 @@
 """Core module for Hapax."""
 from .base import BaseOperation
-from .models import Operation, Graph, OpConfig, ops, graph, set_openlit_config, get_openlit_config
+from .models import Operation, OpConfig, ops, set_openlit_config, get_openlit_config
+from .graph import Graph
 from .decorators import eval, EvaluationError, BaseConfig
 from .flow import Branch, Merge, Condition, Loop
 
@@ -11,7 +12,6 @@ __all__ = [
     'OpConfig',
     'BaseConfig',
     'ops',
-    'graph',
     'Branch',
     'Merge',
     'Condition',

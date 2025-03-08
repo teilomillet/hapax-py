@@ -36,7 +36,7 @@ pip install hapax
 
 2. Create your first pipeline:
 ```python
-from hapax import ops, graph
+from hapax import ops, Graph
 import openlit
 from typing import List, Dict
 
@@ -60,13 +60,14 @@ def tokenize(text: str) -> List[str]:
 def count_tokens(tokens: List[str]) -> Dict[str, int]:
     return {token: tokens.count(token) for token in set(tokens)}
 
-# Compose operations into a graph
-@graph(name="word_counter", tags=["pipeline", "nlp"])
-def word_counter():
-    return clean_text >> tokenize >> count_tokens
+# Create a pipeline using the Graph class
+word_counter = Graph("word_counter")
+word_counter.then(clean_text)
+            .then(tokenize)
+            .then(count_tokens)
 
 # Execute the pipeline
-result = word_counter()("Hello, world!")
+result = word_counter.execute("Hello, world!")
 print(result)  # {'hello,': 1, 'world!': 1}
 ```
 
@@ -113,18 +114,19 @@ Build complex pipelines with immediate type validation:
 
 ```python
 # Using the fluent API - type compatibility checked at definition time
-pipeline = (
-    Graph("text_analysis")
-    .then(clean_text)      # str -> str
-    .branch(
-        summarize,         # str -> str
-        sentiment_analysis # str -> float
-    )
-    .merge(combine_results)
+pipeline = Graph("text_analysis")
+pipeline.then(clean_text)      # str -> str
+pipeline.branch(
+    summarize,         # str -> str
+    sentiment_analysis # str -> float
 )
+pipeline.merge(combine_results)
 
-# Or using the >> operator for composition
-pipeline = clean_text >> tokenize >> analyze  # Type compatibility checked immediately
+# You can also chain methods for a more fluent API
+pipeline = (Graph("nlp_pipeline")
+            .then(clean_text)
+            .then(tokenize)
+            .then(analyze))
 ```
 
 ### 3. Control Flow
@@ -266,80 +268,52 @@ The Hapax Documentation Assistant is an MCP (Model Context Protocol) server that
 
 ### Installation
 
-The Documentation Assistant is included in the main Hapax repository:
-
-1. Clone the Hapax repository:
-   ```bash
-   git clone https://github.com/teilomillet/hapax-py.git
-   cd hapax-py
-   ```
-
-2. Install dependencies:
-   ```bash
-   uv install -e .
-   ```
-
-### Running the server
-
-You can run the documentation server and point it to any Hapax project (including this one):
+The Documentation Assistant can be easily installed as a package:
 
 ```bash
-# To use with the current repository
-python hapax_docs_server.py run
+# Using uv (recommended)
+uv add "hapax[assistant]"
 
-# To use with another Hapax project
-HAPAX_DOCS_DIR=/path/to/other-project/docs HAPAX_SOURCE_DIR=/path/to/other-project/src python hapax_docs_server.py run
+# Or using pip
+pip install "hapax[assistant]"
 ```
 
-For development and testing, you can use MCP Inspector:
+### Setting Up Cursor Integration
+
+Run the automatic setup script to configure the assistant for Cursor:
+
 ```bash
-# For the current repository
-python -m mcp dev hapax_docs_server.py
+# If you installed with uv
+uv run -m hapax_docs cursor-setup
 
-# For another project
-HAPAX_DOCS_DIR=/path/to/other-project/docs HAPAX_SOURCE_DIR=/path/to/other-project/src python -m mcp dev hapax_docs_server.py
+# If you installed with pip
+python -m hapax_docs cursor-setup
 ```
 
-### Installing in Cursor
+Then restart Cursor to activate the assistant.
 
-To use the Hapax Documentation Assistant in Cursor:
+### Running Manually
+
+If you need to run the assistant manually:
+
+```bash
+# Run the documentation server
+python -m hapax_docs run
+
+# With custom documentation and source directories
+python -m hapax_docs run --docs-dir /path/to/docs --source-dir /path/to/source
+```
+
+### Advanced Configuration
+
+For advanced users who want to manually configure the assistant in Cursor:
 
 1. Go to **Cursor Settings > Features > MCP** 
 2. Click the **+ Add New MCP Server** button
 3. Configure as follows:
    - **Type**: CLI (stdio transport)
    - **Name**: Hapax Documentation Assistant
-   - **Command**: 
-     ```
-     # To use with the hapax-py repository
-     python /path/to/hapax-py/hapax_docs_server.py run
-     
-     # To use with another project
-     HAPAX_DOCS_DIR=/path/to/other-project/docs HAPAX_SOURCE_DIR=/path/to/other-project/src python /path/to/hapax-py/hapax_docs_server.py run
-     ```
-
-### Path Requirements
-
-When configuring the server in Cursor:
-
-- Use absolute paths for the server script and any external project directories
-- You can create a shell script wrapper if you need more complex environment setup:
-
-Example wrapper script (`hapax_docs_helper.sh`):
-```bash
-#!/bin/bash
-# Path to the hapax-py repository
-HAPAX_ASSISTANT_PATH=/path/to/hapax-py
-
-# Optional: Point to another project
-# export HAPAX_DOCS_DIR=/path/to/other-project/docs
-# export HAPAX_SOURCE_DIR=/path/to/other-project/src
-
-# Run the assistant
-python $HAPAX_ASSISTANT_PATH/hapax_docs_server.py run
-```
-
-Then in Cursor, set the command to: `/path/to/hapax_docs_helper.sh`
+   - **Command**: `python -m hapax_docs.server`
 
 ### Project-Specific Configuration
 
@@ -350,20 +324,20 @@ For project-specific configuration in Cursor, create a `.cursor/mcp.json` file i
   "mcpServers": {
     "hapax-docs": {
       "command": "python",
-      "args": ["/absolute/path/to/hapax-py/hapax_docs_server.py", "run"]
+      "args": ["-m", "hapax_docs", "run"]
     }
   }
 }
 ```
 
-Or to use with the current project directory:
+Or to use with custom directories:
 
 ```json
 {
   "mcpServers": {
     "hapax-docs": {
-      "command": "bash",
-      "args": ["-c", "HAPAX_DOCS_DIR=./docs HAPAX_SOURCE_DIR=./src python /absolute/path/to/hapax-py/hapax_docs_server.py run"]
+      "command": "python",
+      "args": ["-m", "hapax_docs", "run", "--docs-dir", "./docs", "--source-dir", "./src"]
     }
   }
 }
